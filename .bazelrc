@@ -1,3 +1,19 @@
 build --copt=-O3
 build --linkopt=-O3
-build --copt=-mllvm --copt=-polly
+
+build:android --platforms=//:android_arm64
+build:android --extra_toolchains=@androidndk//:all
+build:android --repo_env=ANDROID_NDK_HOME
+build:android --repo_env=ANDROID_NDK_API_LEVEL
+build:android --copt=-fstack-protector-strong
+build:android --copt=-fvisibility=hidden
+build:android --copt=-ffunction-sections
+build:android --copt=-fdata-sections
+build:android --copt=-fomit-frame-pointer
+build:android --copt=-mllvm --copt=-polly
+build:android --copt=-mllvm --copt=-polly-vectorizer=stripmine
+build:android --linkopt=-Wl,-z,relro
+build:android --linkopt=-Wl,-z,now
+build:android --linkopt=-Wl,-z,noexecstack
+build:android --linkopt=-Wl,--gc-sections
+build:android --linkopt=-Wl,-z,max-page-size=16384
