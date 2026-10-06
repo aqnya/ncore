@@ -16,6 +16,14 @@ enum class boottype : uint8_t {
   invalid,
 };
 
+constexpr uint32_t GZIP2_MAGIC   = 0x00009e1f;
+constexpr uint32_t LZOP_MAGIC    = 0x4f5a4c89;
+constexpr uint32_t XZ_MAGIC      = 0x587a37fd;
+constexpr uint32_t BZIP_MAGIC    = 0x00685a42;
+constexpr uint32_t LZ41_MAGIC    = 0x184c2103;
+constexpr uint32_t LZ42_MAGIC    = 0x184d2204;
+constexpr uint32_t LZ4_LEG_MAGIC = 0x184c2102;
+
 namespace boot {
 class MMapFile {
 public:

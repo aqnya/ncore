@@ -19,15 +19,43 @@ bool read_struct(const MMapFile &image, size_t offset, T &out) {
 }
 
 bool write_file(const char *path, const void *data, size_t size) {
-  if (size == 0)
-    return true;
-  std::ofstream out(path, std::ios::binary);
-  if (!out)
-    return false;
+  uint32_t magic;
+  std::memcpy(&magic, data, sizeof(magic));
+  switch (magic) {
+  case GZIP2_MAGIC:
+    std::cout << "gzip2 compress" << std::endl;
+    break;
+  case LZOP_MAGIC:
+    std::cout << "lzo compress" << std::endl;
+    break;
+  case XZ_MAGIC:
+    std::cout << "xz compress" << std::endl;
+    break;
+  case BZIP_MAGIC:
+    std::cout << "bzip compress" << std::endl;
+    break;
+  case LZ41_MAGIC:
+    std::cout << "lz41 compress" << std::endl;
+    break;
+  case LZ42_MAGIC:
+    std::cout << "lz42 compress" << std::endl;
+    break;
+  case LZ4_LEG_MAGIC:
+    std::cout << "lz4_leg compress" << std::endl;
+    break;
+  default: {
+    if (size == 0)
+      return true;
+    std::ofstream out(path, std::ios::binary);
+    if (!out)
+      return false;
 
-  out.write(static_cast<const char *>(data), size);
-  std::cout << "write out " << path << std::endl;
-  return out.good();
+    out.write(static_cast<const char *>(data), size);
+    std::cout << "write out " << path << std::endl;
+    return out.good();
+  }
+  }
+  return true;
 }
 
 template <typename H>
