@@ -1,0 +1,46 @@
+name: Build Android arm64
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-android-arm64:
+    runs-on: ubuntu-latest
+
+    env:
+      ANDROID_NDK_API_LEVEL: "28"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: $1
+          repository-cache: true
+
+      - name: Export ANDROID_NDK_HOME
+        run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - name: Build ncore (android arm64)
+        run: |
+          bazel build //:ncore \
+            --android_platforms=@androidndk//:android_arm64 \
+            --verbose_failures
+
+      - name: Verify output
+        run: |
+          file bazel-bin/ncore
+          readelf -h bazel-bin/ncore | grep -E "Class|Machine|Type" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ncore-android-arm64
+          path: bazel-bin/ncore
+          if-no-files-found: error
