@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 enum class boottype : uint8_t {
