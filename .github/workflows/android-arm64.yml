@@ -12,10 +12,28 @@ jobs:
 
     env:
       ANDROID_NDK_API_LEVEL: "28"
+      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Cache Android NDK
+        id: ndk-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.NDK_DIR }}
+          key: android-ndk-${{ env.NDK_VERSION }}
+
+      - name: Install the Android NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          url="https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"
+          curl -fSL --retry 3 -o ndk.zip "$url"
+          rm -rf "$NDK_DIR" android-ndk-"$NDK_VERSION"
+          unzip -q ndk.zip
+          mv android-ndk-"$NDK_VERSION" "$NDK_DIR"
+          rm -f ndk.zip
 
       - name: Set up Bazel
         uses: ./.github/actions/bazel
@@ -25,7 +43,6 @@ jobs:
 
       - name: Build ncore (android arm64)
         run: |
-          export ANDROID_NDK_HOME="$NDK_DIR"
           bazel build //:ncore \
             --android_platforms=@androidndk//:android_arm64 \
             --verbose_failures
