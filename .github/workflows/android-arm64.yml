@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      NDK_VERSION: r29
       ANDROID_NDK_API_LEVEL: "28"
+      NDK_DIR: ${{ github.workspace }}/android-ndk
       ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
 
     steps:
@@ -37,9 +39,6 @@ jobs:
 
       - name: Set up Bazel
         uses: ./.github/actions/bazel
-
-      - name: Export ANDROID_NDK_HOME
-        run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
 
       - name: Build ncore (android arm64)
         run: |
