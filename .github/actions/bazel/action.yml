@@ -1,0 +1,82 @@
+name: Set up Bazel
+description: >-
+  Put a pinned bazelisk on PATH and keep the Bazel release it fetches between
+  runs.  Call it as a step, after the checkout: the version that compiles is
+  .bazelversion's, so the runner image's own Bazel (if it ships one) is never
+  what builds the tree, and bazelisk itself is a pinned download rather than a
+  third-party action whose tag can vanish.
+
+inputs:
+  bazelisk-version:
+    description: 'bazelisk release tag to install'
+    required: false
+    default: 'v1.29.0'
+
+runs:
+  using: composite
+  steps:
+    - name: Read the pin
+      id: pin
+      # The cache key below wants the pin, and hashFiles() would be the one-line
+      # way to get it -- but it resolves from GITHUB_WORKSPACE and quietly
+      # returns the empty string when the glob matches nothing, which would fold
+      # every pin onto one key.  Reading the file here fails loudly instead if
+      # .bazelversion ever moves.
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "version=$(cat .bazelversion)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the Bazel release
+      # bazelisk downloads the release .bazelversion names (~200 MB) into
+      # ~/.cache/bazelisk; without this every run fetches it again.  The
+      # bazelisk version is in the key as well, because a different bazelisk can
+      # fetch a differently-built release for the same pin.
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/bazelisk
+        key: bazelisk-${{ inputs.bazelisk-version }}-bazel-${{ steps.pin.outputs.version }}
+
+    - name: Install bazelisk
+      shell: bash
+      env:
+        BAZELISK_VERSION: ${{ inputs.bazelisk-version }}
+      run: |
+        set -euxo pipefail
+        case "$(uname -m)" in
+          x86_64|amd64)  arch=amd64 ;;
+          aarch64|arm64) arch=arm64 ;;
+          *) echo "no bazelisk release for $(uname -m)" >&2; exit 1 ;;
+        esac
+        url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-${arch}"
+        # $HOME/.local/bin is not on the runner's PATH, hence the GITHUB_PATH
+        # line: it puts the shim there for the rest of the job, which is how
+        # scripts/android/build.sh and scripts/pgo.sh find `bazel` at all.
+        # GITHUB_PATH entries are prepended, so this shim is also what wins if
+        # the runner image ships a Bazel of its own.
+        install_dir="$HOME/.local/bin"
+        mkdir -p "$install_dir"
+        curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
+          -o "$install_dir/bazelisk" "$url"
+        chmod 0755 "$install_dir/bazelisk"
+        # bazelisk decides what it is from argv[0]: the same binary is a Bazel
+        # wrapper when it is called `bazel` and a subcommand-taking tool when it
+        # is called `bazelisk`.  Everything in this repository calls `bazel`.
+        ln -sf bazelisk "$install_dir/bazel"
+        echo "$install_dir" >> "$GITHUB_PATH"
+
+    - name: Check the pinned Bazel
+      # This is the step that fetches the pinned release, so a pin nobody can
+      # download fails here rather than in the middle of a build -- and a
+      # `bazel` that is not that release fails here rather than quietly
+      # producing artifacts nobody can reproduce.
+      shell: bash
+      env:
+        WANT: ${{ steps.pin.outputs.version }}
+      run: |
+        set -euxo pipefail
+        command -v bazel
+        got="$(bazel --version | awk '{print $NF}')"
+        echo "pinned: $WANT, running: $got"
+        [ "$got" = "$WANT" ] || {
+          echo "::error::bazel $got is not the pinned $WANT"; exit 1; }

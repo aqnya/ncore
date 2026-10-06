@@ -16,22 +16,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - uses: nttld/setup-ndk@v1
-        with:
-           ndk-version: r27d
 
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.14.0
-        with:
-          bazelisk-cache: true
-          disk-cache: $1
-          repository-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/bazel
 
       - name: Export ANDROID_NDK_HOME
         run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
 
       - name: Build ncore (android arm64)
         run: |
+          export ANDROID_NDK_HOME = "$NDK_DIR"
           bazel build //:ncore \
             --android_platforms=@androidndk//:android_arm64 \
             --verbose_failures
