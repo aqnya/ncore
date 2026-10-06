@@ -81,7 +81,6 @@ void dump_v2_common(const H &head, const MMapFile &image) {
   const auto *base = image.data();
 
   const size_t kernel_pages = (head.kernel_size + 4096 - 1) / 4096;
-  const size_t ramdisk_pages = (head.ramdisk_size + 4096 - 1) / 4096;
 
   write_file("kernel", base + page, head.kernel_size);
 
@@ -90,6 +89,19 @@ void dump_v2_common(const H &head, const MMapFile &image) {
 
 void dump_v2(const boot_img_hdr_v3 &head, const MMapFile &image) {
   dump_v2_common(head, image);
+}
+
+template <typename T>
+void dump_vendor_boot(const T &head, const MMapFile &image) {
+  const auto *base = image.data();
+  const size_t page = head.page_size;
+  const size_t head_page = (2128 + page - 1) / page;
+  const size_t vendor_ramdisk_page =
+      (head.vendor_ramdisk_size + page - 1) / page;
+  write_file("vendor_ramdisk", base + head_page * page,
+             head.vendor_ramdisk_size);
+  write_file("vendor_dtb", base + (head_page + vendor_ramdisk_page) * page,
+             head.dtb_size);
 }
 } // namespace
 int unpack(const std::string filepath) {
@@ -138,11 +150,15 @@ int unpack(const std::string filepath) {
     vendor_boot_img_hdr_v3 head;
     if (!read_struct(image, 0, head))
       return -1;
+    dump_vendor_boot(head, image);
+    break;
   }
   case boottype::vendor_boot_img_hdr_v4: {
     vendor_boot_img_hdr_v4 head;
     if (!read_struct(image, 0, head))
       return -1;
+    dump_vendor_boot(head, image);
+    break;
   }
   case boottype::invalid:
     std::cout << "invalid boot!" << std::endl;
