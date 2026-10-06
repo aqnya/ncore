@@ -25,7 +25,7 @@ jobs:
 
       - name: Build ncore (android arm64)
         run: |
-          export ANDROID_NDK_HOME = "$NDK_DIR"
+          export ANDROID_NDK_HOME="$NDK_DIR"
           bazel build //:ncore \
             --android_platforms=@androidndk//:android_arm64 \
             --verbose_failures
