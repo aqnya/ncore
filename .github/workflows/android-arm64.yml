@@ -43,7 +43,7 @@ jobs:
       - name: Build ncore (android arm64)
         run: |
           bazel build //:ncore \
-            --android_platforms=@androidndk//:android_arm64 \
+            --platforms=@androidndk//:android_arm64 \
             --verbose_failures
 
       - name: Verify output

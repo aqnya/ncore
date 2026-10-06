@@ -1,6 +1,14 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
+platform(
+    name = "android_arm64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:android",
+    ],
+)
+
 cc_library(
     name = "argparse",
     hdrs = glob(["include/argparse/**/*.hpp"]),
