@@ -93,4 +93,6 @@ private:
 };
 
 boottype probe_type(MMapFile &bootimg);
+void decompress_lz4(const char* filepath,const uint8_t *data, size_t size);
+bool decompress_lz4_legacy(const char* filepath,const uint8_t *data, size_t size);
 } // namespace boot

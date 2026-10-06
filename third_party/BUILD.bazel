@@ -1,0 +1,61 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+_LZ4_DIR = "lz4/lib"
+
+cc_library(
+    name = "lz4",
+    srcs = [_LZ4_DIR + "/lz4.c"],
+    hdrs = [
+        _LZ4_DIR + "/lz4.h",
+        _LZ4_DIR + "/lz4.c",
+    ],
+    strip_include_prefix = _LZ4_DIR,
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "lz4_hc",
+    srcs = [_LZ4_DIR + "/lz4hc.c"],
+    hdrs = [
+        _LZ4_DIR + "/lz4hc.h",
+    ],
+    strip_include_prefix = _LZ4_DIR,
+    deps = [":lz4"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "xxhash",
+    srcs = [_LZ4_DIR + "/xxhash.c"],
+    hdrs = [_LZ4_DIR + "/xxhash.h"],
+    strip_include_prefix = _LZ4_DIR,
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "lz4_frame",
+    srcs = [_LZ4_DIR + "/lz4frame.c"],
+    hdrs = [
+        _LZ4_DIR + "/lz4frame.h",
+        _LZ4_DIR + "/lz4frame_static.h",
+    ],
+    strip_include_prefix = _LZ4_DIR,
+    deps = [
+        ":lz4",
+        ":lz4_hc",
+        ":xxhash",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "lz4_file",
+    srcs = [_LZ4_DIR + "/lz4file.c"],
+    hdrs = [_LZ4_DIR + "/lz4file.h"],
+    strip_include_prefix = _LZ4_DIR,
+    deps = [
+        ":lz4_frame",
+        ":lz4",
+    ],
+    visibility = ["//visibility:public"],
+)

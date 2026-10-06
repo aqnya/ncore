@@ -3,6 +3,9 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <sys/mman.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 namespace boot {
 namespace {
@@ -19,6 +22,7 @@ bool read_struct(const MMapFile &image, size_t offset, T &out) {
 }
 
 bool write_file(const char *path, const void *data, size_t size) {
+  std::cout << "write out " << path << std::endl;
   uint32_t magic;
   std::memcpy(&magic, data, sizeof(magic));
   switch (magic) {
@@ -36,12 +40,15 @@ bool write_file(const char *path, const void *data, size_t size) {
     break;
   case LZ41_MAGIC:
     std::cout << "lz41 compress" << std::endl;
+    decompress_lz4(path, static_cast<const uint8_t *>(data), size);
     break;
   case LZ42_MAGIC:
     std::cout << "lz42 compress" << std::endl;
+    decompress_lz4(path, static_cast<const uint8_t *>(data), size);
     break;
   case LZ4_LEG_MAGIC:
     std::cout << "lz4_leg compress" << std::endl;
+    decompress_lz4_legacy(path, static_cast<const uint8_t *>(data), size);
     break;
   default: {
     if (size == 0)
@@ -51,7 +58,6 @@ bool write_file(const char *path, const void *data, size_t size) {
       return false;
 
     out.write(static_cast<const char *>(data), size);
-    std::cout << "write out " << path << std::endl;
     return out.good();
   }
   }
