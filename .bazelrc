@@ -1,0 +1,3 @@
+build --copt=-O3
+build --linkopt=-O3
+build --copt=-mllvm --copt=-polly

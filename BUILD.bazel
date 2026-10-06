@@ -1,0 +1,43 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "argparse",
+    hdrs = glob(["include/argparse/**/*.hpp"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "boot",
+    srcs = [
+        "src/boot/prase.cc",
+        "src/boot/unpack.cc",
+    ],
+    hdrs = [
+        "include/boot/boot.hpp",
+        "src/boot/boot_internal.hpp",
+        "src/boot/bootimg.h",
+    ],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cli",
+    srcs = ["src/cli/cli.cc"],
+    hdrs = ["include/cli.hpp"],
+    includes = ["include"],
+    deps = [
+        ":argparse",
+        ":boot",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "ncore",
+    srcs = ["src/main.cc"],
+    deps = [":cli"],
+    visibility = ["//visibility:public"],
+)
