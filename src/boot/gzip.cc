@@ -98,4 +98,56 @@ bool decompress_gzip(const char *filepath, const uint8_t *data, size_t size) {
   return ok;
 }
 
+bool compress_gzip(const char *filepath, const uint8_t *data, size_t size) {
+  FILE *out = fopen(filepath, "wb");
+  if (!out) {
+    std::cerr << "gzip: fopen failed: " << filepath << '\n';
+    return false;
+  }
+
+  z_stream strm{};
+  if (deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8,
+                   Z_DEFAULT_STRATEGY) != Z_OK) {
+    std::cerr << "gzip: deflateInit2 failed\n";
+    fclose(out);
+    return false;
+  }
+
+  std::vector<uint8_t> buffer(kBufferSize);
+  strm.next_in = const_cast<Bytef *>(data);
+  strm.avail_in = static_cast<uInt>(size);
+
+  bool ok = false;
+
+  while (true) {
+    strm.next_out = buffer.data();
+    strm.avail_out = static_cast<uInt>(buffer.size());
+
+    const int ret = deflate(&strm, Z_FINISH);
+
+    if (!write_all(out, buffer.data(), buffer.size() - strm.avail_out))
+      break;
+
+    if (ret == Z_STREAM_END) {
+      ok = true;
+      break;
+    }
+
+    if (ret != Z_OK && ret != Z_BUF_ERROR) {
+      std::cerr << "gzip: deflate failed: " << (strm.msg ? strm.msg : "?")
+                << '\n';
+      break;
+    }
+  }
+
+  deflateEnd(&strm);
+
+  if (fclose(out) != 0) {
+    std::cerr << "gzip: fclose failed: " << filepath << '\n';
+    return false;
+  }
+
+  return ok;
+}
+
 } // namespace boot

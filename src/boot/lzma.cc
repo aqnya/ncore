@@ -2,6 +2,7 @@
 #include <iostream>
 #include <lzma.h>
 #include <string>
+#include <vector>
 namespace boot {
 namespace {
 int init_decompress(lzma_stream *strm) {
@@ -164,6 +165,98 @@ bool decompress_xz(const char *filepath, const uint8_t *data, size_t size) {
     fprintf(stderr, "Close error: %s\n", strerror(errno));
     return false;
   }
+  return ok;
+}
+
+bool compress_lzma(const char *filepath, const uint8_t *data, size_t size) {
+  lzma_stream strm = LZMA_STREAM_INIT;
+  // The .lzma (alone) format has no header, so the default options used here
+  // produce a stream that works standalone.
+  lzma_options_lzma options;
+  if (lzma_lzma_preset(&options, LZMA_PRESET_DEFAULT)) {
+    std::cerr << "Error setting lzma preset" << std::endl;
+    return false;
+  }
+  lzma_ret ret = lzma_alone_encoder(&strm, &options);
+  if (ret != LZMA_OK) {
+    std::cerr << "Error initializing the lzma encoder: " << ret << std::endl;
+    return false;
+  }
+
+  FILE *outfile = fopen(filepath, "wb");
+  if (!outfile) {
+    fprintf(stderr, "Failed to open '%s': %s\n", filepath, strerror(errno));
+    lzma_end(&strm);
+    return false;
+  }
+
+  uint8_t outbuf[BUFSIZ];
+  strm.next_in = data;
+  strm.avail_in = size;
+  strm.next_out = outbuf;
+  strm.avail_out = sizeof(outbuf);
+
+  bool ok = false;
+
+  while (true) {
+    ret = lzma_code(&strm, LZMA_FINISH);
+
+    if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+      const size_t write_size = sizeof(outbuf) - strm.avail_out;
+      if (fwrite(outbuf, 1, write_size, outfile) != write_size) {
+        fprintf(stderr, "Write error: %s\n", strerror(errno));
+        break;
+      }
+      strm.next_out = outbuf;
+      strm.avail_out = sizeof(outbuf);
+    }
+
+    if (ret == LZMA_STREAM_END) {
+      ok = true;
+      break;
+    }
+
+    if (ret != LZMA_OK) {
+      std::cerr << "lzma encoder error: " << ret << std::endl;
+      break;
+    }
+  }
+
+  lzma_end(&strm);
+  if (fclose(outfile) != 0) {
+    fprintf(stderr, "Close error: %s\n", strerror(errno));
+    return false;
+  }
+  return ok;
+}
+
+bool compress_xz(const char *filepath, const uint8_t *data, size_t size) {
+  // `.xz` streams carry the uncompressed size in a header/index, so the whole
+  // input must be available and the output is bounded by lzma_stream_buffer_bound.
+  std::vector<uint8_t> out_buf(lzma_stream_buffer_bound(size));
+  size_t out_pos = 0;
+
+  const lzma_ret ret =
+      lzma_easy_buffer_encode(6, LZMA_CHECK_CRC64, nullptr, data, size,
+                              out_buf.data(), &out_pos, out_buf.size());
+  if (ret != LZMA_OK) {
+    std::cerr << "xz: lzma_easy_buffer_encode failed: " << ret << std::endl;
+    return false;
+  }
+
+  FILE *out = fopen(filepath, "wb");
+  if (!out) {
+    fprintf(stderr, "Failed to open '%s': %s\n", filepath, strerror(errno));
+    return false;
+  }
+
+  const bool ok = out_pos == 0 || fwrite(out_buf.data(), 1, out_pos, out) == out_pos;
+
+  if (fclose(out) != 0) {
+    fprintf(stderr, "Close error: %s\n", strerror(errno));
+    return false;
+  }
+
   return ok;
 }
 } // namespace boot

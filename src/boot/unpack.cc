@@ -113,6 +113,79 @@ bool write_file(const char *path, const void *data, size_t size) {
   return out.good();
 }
 
+} // namespace
+
+const char *detect_format(const uint8_t *data, size_t size) {
+  if (size >= 2) {
+    const uint16_t magic16 = read_le<uint16_t>(data, size);
+    if (magic16 == GZIP1_MAGIC || magic16 == GZIP2_MAGIC)
+      return "gzip";
+  }
+
+  if (size >= 4 && (read_le<uint32_t>(data, size) & 0x00ffffff) == BZIP_MAGIC &&
+      data[3] >= '1' && data[3] <= '9')
+    return "bzip2";
+
+  if (size >= 4) {
+    switch (read_le<uint32_t>(data, size)) {
+    case LZOP_MAGIC:
+      return "lzo";
+    case XZ_MAGIC:
+      return "xz";
+    case LZ41_MAGIC:
+      return "lz4_lg";
+    case LZ42_MAGIC:
+      return "lz42";
+    case LZ4_LEG_MAGIC:
+      return "lz4_leg";
+    default:
+      break;
+    }
+  }
+
+  if (is_lzma_alone(data, size))
+    return "lzma";
+
+  return nullptr;
+}
+
+bool compress_section(const char *path, const uint8_t *data, size_t size,
+                      const char *format) {
+  if (size == 0)
+    return true;
+
+  if (format == nullptr) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out)
+      return false;
+    out.write(reinterpret_cast<const char *>(data), size);
+    return out.good();
+  }
+
+  std::cout << "recompress " << path << " as " << format << std::endl;
+
+  const std::string name(format);
+  if (name == "gzip")
+    return compress_gzip(path, data, size);
+  if (name == "bzip2")
+    return compress_bzip2(path, data, size);
+  if (name == "lzo")
+    return compress_lzop(path, data, size);
+  if (name == "xz")
+    return compress_xz(path, data, size);
+  if (name == "lzma")
+    return compress_lzma(path, data, size);
+  if (name == "lz4_lg" || name == "lz4_leg")
+    return compress_lz4_legacy(path, data, size);
+  if (name == "lz42")
+    return compress_lz4(path, data, size);
+
+  std::cerr << path << ": no compressor for " << format << std::endl;
+  return false;
+}
+
+namespace {
+
 // Bounds-check a section described by (offset, size) against the mapped image
 // and dump it to `path`. Empty sections are ignored.
 bool write_section(const char *path, const MMapFile &image, size_t offset,

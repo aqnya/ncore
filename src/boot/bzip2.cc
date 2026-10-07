@@ -97,4 +97,38 @@ bool decompress_bzip2(const char *filepath, const uint8_t *data, size_t size) {
   return ok;
 }
 
+bool compress_bzip2(const char *filepath, const uint8_t *data, size_t size) {
+  // bzip2 works on a single in-memory buffer for the streaming helpers used
+  // here, so bound the output conservatively (worst case is slightly larger
+  // than the input).
+  unsigned int dest_len = static_cast<unsigned int>(size + size / 100 + 600);
+
+  std::vector<char> out_buf(dest_len);
+
+  const int ret =
+      BZ2_bzBuffToBuffCompress(out_buf.data(), &dest_len,
+                               const_cast<char *>(reinterpret_cast<const char *>(
+                                   data)),
+                               static_cast<unsigned int>(size), 9, 0, 0);
+  if (ret != BZ_OK) {
+    std::cerr << "bzip2: compress failed: " << bz2_error(ret) << '\n';
+    return false;
+  }
+
+  FILE *out = fopen(filepath, "wb");
+  if (!out) {
+    std::cerr << "bzip2: fopen failed: " << filepath << '\n';
+    return false;
+  }
+
+  const bool ok = write_all(out, out_buf.data(), dest_len);
+
+  if (fclose(out) != 0) {
+    std::cerr << "bzip2: fclose failed: " << filepath << '\n';
+    return false;
+  }
+
+  return ok;
+}
+
 } // namespace boot

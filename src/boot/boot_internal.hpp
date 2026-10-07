@@ -97,6 +97,17 @@ private:
 
 boottype probe_type(MMapFile &bootimg);
 
+// Detect the compression format of a section from its leading bytes. Returns
+// the name used to recreate the section (e.g. "gzip"), or nullptr when the
+// data is not compressed or the format is unsupported for re-compression.
+const char *detect_format(const uint8_t *data, size_t size);
+
+// Write `size` bytes to `path`, compressing them with `format` when it is not
+// nullptr. `format` comes from detect_format() applied to the original
+// section, so the rebuilt image keeps the section's original encoding.
+bool compress_section(const char *path, const uint8_t *data, size_t size,
+                      const char *format);
+
 bool decompress_gzip(const char *filepath, const uint8_t *data, size_t size);
 bool decompress_bzip2(const char *filepath, const uint8_t *data, size_t size);
 bool decompress_lzop(const char *filepath, const uint8_t *data, size_t size);
@@ -106,4 +117,12 @@ bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
                            size_t size);
 bool decompress_lz4_lg(const char *filepath, const uint8_t *data, size_t size);
 bool decompress_xz(const char *filepath, const uint8_t *data, size_t size);
+
+bool compress_gzip(const char *filepath, const uint8_t *data, size_t size);
+bool compress_bzip2(const char *filepath, const uint8_t *data, size_t size);
+bool compress_lzma(const char *filepath, const uint8_t *data, size_t size);
+bool compress_xz(const char *filepath, const uint8_t *data, size_t size);
+bool compress_lz4(const char *filepath, const uint8_t *data, size_t size);
+bool compress_lz4_legacy(const char *filepath, const uint8_t *data, size_t size);
+bool compress_lzop(const char *filepath, const uint8_t *data, size_t size);
 } // namespace boot

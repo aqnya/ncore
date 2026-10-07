@@ -30,6 +30,11 @@ int parse_cli(int argc, char *argv[], arguments &args) {
     .help("unpack bootimg")
     .nargs(1)
     .metavar("PATH");
+  
+  program.add_argument("-r", "--replace")
+    .help("replace bootimg: <boot.img> <kernel/dtb>")
+    .nargs(2)
+    .metavar("<bootimg> <kernel/dtb>");
 
   if (argc <= 1) {
     std::cout << program << std::endl;
@@ -55,6 +60,18 @@ int parse_cli(int argc, char *argv[], arguments &args) {
   if (program.is_used("--unpack")) {
     std::string path = program.get<std::string>("--unpack");
     int ret = boot::unpack(path);
+    if (ret < 0)
+      return -1;
+    return 0;
+}
+
+  if (program.is_used("--replace")) {
+    auto files = program.get<std::vector<std::string>>("--replace");
+    if (files.size() < 2) {
+      std::cerr << "--replace requires <bootimg> <kernel/dtb>\n";
+      return 1;
+    }
+    int ret = boot::replace(files[0], files[1]);
     if (ret < 0)
       return -1;
     return 0;

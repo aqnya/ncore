@@ -21,6 +21,7 @@ cc_library(
     srcs = [
         "src/boot/prase.cc",
         "src/boot/unpack.cc",
+        "src/boot/replace.cc",
         "src/boot/gzip.cc",
         "src/boot/bzip2.cc",
         "src/boot/lz4.cc",
