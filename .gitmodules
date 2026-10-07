@@ -1,6 +1,6 @@
 [submodule "third_party/lz4"]
 	path = third_party/lz4
 	url = https://github.com/lz4/lz4.git
-[submodule "third_party/libarchive"]
-	path = third_party/libarchive
-	url = https://github.com/libarchive/libarchive.git
+[submodule "third_party/xz"]
+	path = third_party/xz
+	url = https://github.com/tukaani-project/xz.git

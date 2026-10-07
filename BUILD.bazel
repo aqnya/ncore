@@ -31,8 +31,8 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-    "@lz4//:lz4_frame",
-    "@xz//:lzma",
+    "//third_party:lz4_file",
+    "//third_party:xz",
     ],
     visibility = ["//visibility:public"],
 )

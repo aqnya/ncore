@@ -59,3 +59,59 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+_XZ_DIR = "xz/src/liblzma"
+_XZ_COMMON_DIR = "xz/src/common"
+
+cc_library(
+    name = "xz",
+    srcs = glob([
+        _XZ_DIR + "/check/*.c",
+        _XZ_DIR + "/common/*.c",
+        _XZ_DIR + "/delta/*.c",
+        _XZ_DIR + "/lz/*.c",
+        _XZ_DIR + "/lzma/*.c",
+        _XZ_DIR + "/rangecoder/*.c",
+        _XZ_DIR + "/simple/*.c",
+    ], exclude = [
+        _XZ_DIR + "/check/crc32_tablegen.c",
+        _XZ_DIR + "/check/crc64_tablegen.c",
+        _XZ_DIR + "/check/crc_clmul_consts_gen.c",
+        _XZ_DIR + "/check/crc32_small.c",
+        _XZ_DIR + "/check/crc64_small.c",
+        _XZ_DIR + "/lzma/fastpos_tablegen.c",
+        _XZ_DIR + "/rangecoder/price_tablegen.c",
+    ]),
+    hdrs = [
+        _XZ_DIR + "/api/lzma.h",
+    ],
+    textual_hdrs = glob([
+        _XZ_DIR + "/api/lzma/*.h",
+        _XZ_DIR + "/check/*.h",
+        _XZ_DIR + "/common/*.h",
+        _XZ_DIR + "/delta/*.h",
+        _XZ_DIR + "/lz/*.h",
+        _XZ_DIR + "/lzma/*.h",
+        _XZ_DIR + "/rangecoder/*.h",
+        _XZ_DIR + "/simple/*.h",
+        _XZ_COMMON_DIR + "/*.h",
+    ]) + ["xz_bazel/config.h"],
+    includes = [
+        "xz_bazel",
+        _XZ_DIR + "/api",
+        _XZ_DIR + "/check",
+        _XZ_DIR + "/common",
+        _XZ_DIR + "/delta",
+        _XZ_DIR + "/lz",
+        _XZ_DIR + "/lzma",
+        _XZ_DIR + "/rangecoder",
+        _XZ_DIR + "/simple",
+        _XZ_COMMON_DIR,
+    ],
+    defines = [
+        "HAVE_CONFIG_H",
+        "MYTHREAD_POSIX",
+    ],
+    strip_include_prefix = _XZ_DIR + "/api",
+    visibility = ["//visibility:public"],
+)
