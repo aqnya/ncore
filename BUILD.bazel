@@ -21,7 +21,7 @@ cc_library(
     srcs = [
         "src/boot/prase.cc",
         "src/boot/unpack.cc",
-        "src/boot/decompress.cc",
+        "src/boot/lz4.cc",
         "src/boot/lzma.cc",
     ],
     hdrs = [
