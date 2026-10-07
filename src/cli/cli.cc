@@ -29,12 +29,14 @@ int parse_cli(int argc, char *argv[], arguments &args) {
   program.add_argument("-u", "--unpack")
     .help("unpack bootimg")
     .nargs(1)
-    .metavar("PATH");
+    .metavar("PATH")
+    .hidden_from_usage();
   
   program.add_argument("-r", "--replace")
     .help("replace bootimg: <boot.img> <kernel/dtb>")
     .nargs(2)
-    .metavar("<bootimg> <kernel/dtb>");
+    .metavar("<bootimg> <kernel/dtb>")
+    .hidden_from_usage();
 
   if (argc <= 1) {
     std::cout << program << std::endl;
