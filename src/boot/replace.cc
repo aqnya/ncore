@@ -52,6 +52,56 @@ struct section {
 
 constexpr size_t npos = std::string::npos;
 
+// On-disk field offsets inside the boot header.
+//
+// These cannot be obtained with `offsetof` for the versioned headers: v1/v2/v4
+// (and vendor v4) are derived from their predecessors, which makes them
+// non-standard-layout types, and `offsetof` on such a type is undefined
+// behaviour (-Winvalid-offsetof). The values are therefore spelled out here and
+// kept in sync with the AOSP struct definitions in bootimg.h. Each one is the
+// offset of the field from the start of the boot image (the header begins at
+// offset 0), so they are independent of the struct sizes.
+constexpr size_t V0_KERNEL_SIZE_OFF = 8;
+constexpr size_t V0_RAMDISK_SIZE_OFF = 16;
+constexpr size_t V0_SECOND_SIZE_OFF = 24;
+// v1 appends recovery_dtbo_size (u32) + recovery_dtbo_offset (u64) + header_size
+// after the 1632-byte v0 base.
+constexpr size_t V1_RECOVERY_DTBO_SIZE_OFF = 1632;
+constexpr size_t V1_RECOVERY_DTBO_OFFSET_OFF = 1636;
+// v2 appends dtb_size (u32) + dtb_addr (u64) after the 1648-byte v1 base.
+constexpr size_t V2_DTB_SIZE_OFF = 1648;
+// v3 boot header field offsets.
+constexpr size_t V3_KERNEL_SIZE_OFF = 8;
+constexpr size_t V3_RAMDISK_SIZE_OFF = 12;
+// v4 appends signature_size (u32) after the 1580-byte v3 base.
+constexpr size_t V4_SIGNATURE_SIZE_OFF = 1580;
+// vendor v3 header field offsets.
+constexpr size_t VENDOR_V3_RAMDISK_SIZE_OFF = 24;
+constexpr size_t VENDOR_V3_DTB_SIZE_OFF = 2100;
+// vendor v4 appends the table fields after the 2112-byte vendor v3 base.
+constexpr size_t VENDOR_V4_TABLE_SIZE_OFF = 2112;
+constexpr size_t VENDOR_V4_BOOTCONFIG_SIZE_OFF = 2124;
+
+// Tie the offsets above to the actual struct layout so a change to bootimg.h
+// cannot silently desynchronise them. sizeof is well-defined even for the
+// non-standard-layout derived headers, unlike offsetof.
+static_assert(sizeof(boot_img_hdr_v0) == 1632,
+              "boot_img_hdr_v0 layout changed; update the V0_* offsets");
+static_assert(sizeof(boot_img_hdr_v1) == 1648,
+              "boot_img_hdr_v1 layout changed; update the V1_* offsets");
+static_assert(sizeof(boot_img_hdr_v2) == 1660,
+              "boot_img_hdr_v2 layout changed; update the V2_* offsets");
+static_assert(sizeof(boot_img_hdr_v3) == 1580,
+              "boot_img_hdr_v3 layout changed; update the V3_* offsets");
+static_assert(sizeof(boot_img_hdr_v4) == 1584,
+              "boot_img_hdr_v4 layout changed; update the V4_* offsets");
+static_assert(sizeof(vendor_boot_img_hdr_v3) == 2112,
+              "vendor_boot_img_hdr_v3 layout changed; update the VENDOR_V3_* "
+              "offsets");
+static_assert(sizeof(vendor_boot_img_hdr_v4) == 2128,
+              "vendor_boot_img_hdr_v4 layout changed; update the VENDOR_V4_* "
+              "offsets");
+
 } // namespace
 
 // Rebuild `original` with the section picked by the replacement file name
@@ -118,9 +168,9 @@ int replace(const std::string original, const std::string new_file) {
     else
       header_size = sizeof(boot_img_hdr_v0);
 
-    const size_t ksize = offsetof(boot_img_hdr_v0, kernel_size);
-    const size_t rsize = offsetof(boot_img_hdr_v0, ramdisk_size);
-    const size_t ssize = offsetof(boot_img_hdr_v0, second_size);
+    const size_t ksize = V0_KERNEL_SIZE_OFF;
+    const size_t rsize = V0_RAMDISK_SIZE_OFF;
+    const size_t ssize = V0_SECOND_SIZE_OFF;
 
     sections.push_back({"kernel", image.data() + page, head.kernel_size, ksize});
     sections.push_back({"ramdisk",
@@ -133,8 +183,8 @@ int replace(const std::string original, const std::string new_file) {
 
     if (b == boottype::boot_img_hdr_v1 || b == boottype::boot_img_hdr_v2) {
       const boot_img_hdr_v1 &h1 = head;
-      const size_t roff = offsetof(boot_img_hdr_v1, recovery_dtbo_offset);
-      const size_t rsz = offsetof(boot_img_hdr_v1, recovery_dtbo_size);
+      const size_t roff = V1_RECOVERY_DTBO_OFFSET_OFF;
+      const size_t rsz = V1_RECOVERY_DTBO_SIZE_OFF;
       sections.push_back({"recovery_dtbo",
                           image.data() + h1.recovery_dtbo_offset,
                           h1.recovery_dtbo_size, rsz, roff});
@@ -142,7 +192,7 @@ int replace(const std::string original, const std::string new_file) {
 
     if (b == boottype::boot_img_hdr_v2) {
       const boot_img_hdr_v2 &h2 = head;
-      const size_t dsize = offsetof(boot_img_hdr_v2, dtb_size);
+      const size_t dsize = V2_DTB_SIZE_OFF;
       sections.push_back({"dtb",
                           image.data() +
                               page + align_up(head.kernel_size, page) +
@@ -172,13 +222,13 @@ int replace(const std::string original, const std::string new_file) {
       ramdisk_size = head.ramdisk_size;
     }
 
-    const size_t ksize = offsetof(boot_img_hdr_v3, kernel_size);
-    const size_t rsize = offsetof(boot_img_hdr_v3, ramdisk_size);
+    const size_t ksize = V3_KERNEL_SIZE_OFF;
+    const size_t rsize = V3_RAMDISK_SIZE_OFF;
     sections.push_back({"kernel", image.data() + page, kernel_size, ksize});
     sections.push_back({"ramdisk", image.data() + page + align_up(kernel_size, page),
                         ramdisk_size, rsize});
     if (b == boottype::boot_img_hdr_v4) {
-      const size_t sigsize = offsetof(boot_img_hdr_v4, signature_size);
+      const size_t sigsize = V4_SIGNATURE_SIZE_OFF;
       sections.push_back({"boot_signature",
                           image.data() + page + align_up(kernel_size, page) +
                               align_up(ramdisk_size, page),
@@ -201,8 +251,8 @@ int replace(const std::string original, const std::string new_file) {
       return -1;
     }
     header_size = 2128;
-    const size_t vrsize = offsetof(vendor_boot_img_hdr_v3, vendor_ramdisk_size);
-    const size_t dsize = offsetof(vendor_boot_img_hdr_v3, dtb_size);
+    const size_t vrsize = VENDOR_V3_RAMDISK_SIZE_OFF;
+    const size_t dsize = VENDOR_V3_DTB_SIZE_OFF;
 
     const size_t vramdisk_off = align_up(header_size, page);
     sections.push_back({"vendor_ramdisk", image.data() + vramdisk_off,
@@ -213,13 +263,12 @@ int replace(const std::string original, const std::string new_file) {
 
     if (b == boottype::vendor_boot_img_hdr_v4) {
       const size_t toff = dtb_off + align_up(head.dtb_size, page);
-      const size_t tsize =
-          offsetof(vendor_boot_img_hdr_v4, vendor_ramdisk_table_size);
+      const size_t tsize = VENDOR_V4_TABLE_SIZE_OFF;
       sections.push_back({"vendor_ramdisk_table", image.data() + toff,
                           head.vendor_ramdisk_table_size, tsize});
 
       const size_t boff = toff + align_up(head.vendor_ramdisk_table_size, page);
-      const size_t bsize = offsetof(vendor_boot_img_hdr_v4, bootconfig_size);
+      const size_t bsize = VENDOR_V4_BOOTCONFIG_SIZE_OFF;
       sections.push_back({"bootconfig", image.data() + boff,
                           head.bootconfig_size, bsize});
     }
