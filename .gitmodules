@@ -10,6 +10,3 @@
 [submodule "third_party/bzip2"]
 	path = third_party/bzip2
 	url = https://github.com/libarchive/bzip2.git
-[submodule "third_party/lzo"]
-	path = third_party/lzo
-	url = https://github.com/nemequ/lzo.git
