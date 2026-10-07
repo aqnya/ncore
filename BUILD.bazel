@@ -21,8 +21,11 @@ cc_library(
     srcs = [
         "src/boot/prase.cc",
         "src/boot/unpack.cc",
+        "src/boot/gzip.cc",
+        "src/boot/bzip2.cc",
         "src/boot/lz4.cc",
         "src/boot/lzma.cc",
+        "src/boot/lzop.cc",
     ],
     hdrs = [
         "include/boot/boot.hpp",
@@ -31,8 +34,11 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+    "//third_party:bzip2",
     "//third_party:lz4_file",
+    "//third_party:lzo",
     "//third_party:xz",
+    "//third_party:zlib",
     ],
     visibility = ["//visibility:public"],
 )

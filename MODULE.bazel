@@ -2,6 +2,7 @@ module(name = "ncore", version = "1.0.0-alpha")
 
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "rules_license", version = "1.0.0")
 
 bazel_dep(name = "rules_android_ndk", version = "0.1.5")
 android_ndk_ext = use_extension("//:android_ndk.bzl", "android_ndk")

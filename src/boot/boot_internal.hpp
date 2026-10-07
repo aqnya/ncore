@@ -16,12 +16,16 @@ enum class boottype : uint8_t {
   invalid,
 };
 
-constexpr uint32_t GZIP2_MAGIC   = 0x00009e1f;
-constexpr uint32_t LZOP_MAGIC    = 0x4f5a4c89;
-constexpr uint32_t XZ_MAGIC      = 0x587a37fd;
-constexpr uint32_t LZ41_MAGIC    = 0x184c2103;
-constexpr uint32_t LZ42_MAGIC    = 0x184d2204;
-constexpr uint32_t LZ4_LEG_MAGIC = 0x184c2102;
+// Compression magics. The first two are only two bytes wide, so compare them
+// as 16-bit values against the start of a section.
+constexpr uint16_t GZIP1_MAGIC   = 0x8b1f; // "\x1f\x8b" (RFC 1952)
+constexpr uint16_t GZIP2_MAGIC   = 0x9e1f; // "\x1f\x9e" (magiskboot gzip2)
+constexpr uint32_t LZOP_MAGIC    = 0x4f5a4c89; // "\x89LZO"
+constexpr uint32_t XZ_MAGIC      = 0x587a37fd; // "\xfd7zXZ"
+constexpr uint32_t BZIP_MAGIC    = 0x685a42;   // "BZh" (3 bytes)
+constexpr uint32_t LZ41_MAGIC    = 0x184c2103; // "\x03\x21\x4c\x18" (lz4_lg)
+constexpr uint32_t LZ42_MAGIC    = 0x184d2204; // "\x04\x22\x4d\x18" (lz4 frame)
+constexpr uint32_t LZ4_LEG_MAGIC = 0x184c2102; // "\x02\x21\x4c\x18" (lz4 legacy)
 
 namespace boot {
 class MMapFile {
@@ -92,7 +96,14 @@ private:
 };
 
 boottype probe_type(MMapFile &bootimg);
-void decompress_lz4(const char* filepath,const uint8_t *data, size_t size);
-bool decompress_lz4_legacy(const char* filepath,const uint8_t *data, size_t size);
+
+bool decompress_gzip(const char *filepath, const uint8_t *data, size_t size);
+bool decompress_bzip2(const char *filepath, const uint8_t *data, size_t size);
+bool decompress_lzop(const char *filepath, const uint8_t *data, size_t size);
+bool decompress_lzma(const char *filepath, const uint8_t *data, size_t size);
+bool decompress_lz4(const char *filepath, const uint8_t *data, size_t size);
+bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
+                           size_t size);
+bool decompress_lz4_lg(const char *filepath, const uint8_t *data, size_t size);
 bool decompress_xz(const char *filepath, const uint8_t *data, size_t size);
 } // namespace boot

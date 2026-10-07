@@ -14,6 +14,7 @@ constexpr size_t kLegacyBlockSize = 8 << 20;
 constexpr size_t kFrameBufferSize = 16 << 10;
 
 constexpr uint32_t kLegacyMagic = 0x184C2102;
+constexpr uint32_t kLgMagic = 0x184C2103;
 
 bool write_all(FILE *fp, const void *data, size_t size) {
   return size == 0 || fwrite(data, 1, size, fp) == size;
@@ -30,19 +31,22 @@ bool read_u32(const uint8_t *&p, const uint8_t *end, uint32_t &value) {
 
 } // namespace
 
-bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
-                           size_t size) {
+// Shared decoder for the legacy LZ4 block format. `is_lg` selects the LG
+// variant, which terminates with a little-endian u32 holding the total
+// uncompressed size instead of a zero-sized block marker.
+bool decompress_lz4_block(const char *filepath, const uint8_t *data,
+                          size_t size, bool is_lg) {
   const uint8_t *p = data;
   const uint8_t *end = data + size;
 
   uint32_t magic;
   if (!read_u32(p, end, magic)) {
-    std::cerr << "LZ4 legacy: truncated magic\n";
+    std::cerr << "LZ4 block: truncated magic\n";
     return false;
   }
 
-  if (magic != kLegacyMagic) {
-    std::cerr << "LZ4 legacy: bad magic: 0x" << std::hex << magic << std::dec
+  if (magic != kLegacyMagic && magic != kLgMagic) {
+    std::cerr << "LZ4 block: bad magic: 0x" << std::hex << magic << std::dec
               << '\n';
     return false;
   }
@@ -62,23 +66,29 @@ bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
     uint32_t block_size;
 
     if (!read_u32(p, end, block_size)) {
-      std::cerr << "LZ4 legacy: truncated block size\n";
+      std::cerr << "LZ4 block: truncated block size\n";
       break;
     }
 
     if (block_size == 0) {
-      // End marker.
+      // End marker (legacy format).
       ok = true;
       break;
     }
 
     if (block_size > kLegacyBlockSize) {
-      std::cerr << "LZ4 legacy: block too large: " << block_size << '\n';
+      // In the LG format the stream ends with the total uncompressed size,
+      // which is never a valid compressed block. Treat it as EOF.
+      if (is_lg) {
+        ok = true;
+        break;
+      }
+      std::cerr << "LZ4 block: block too large: " << block_size << '\n';
       break;
     }
 
     if (static_cast<size_t>(end - p) < block_size) {
-      std::cerr << "LZ4 legacy: truncated block\n";
+      std::cerr << "LZ4 block: truncated block\n";
       break;
     }
 
@@ -90,18 +100,31 @@ bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
                                             static_cast<int>(kLegacyBlockSize));
 
     if (decoded < 0) {
-      std::cerr << "LZ4 legacy: decompression failed\n";
+      std::cerr << "LZ4 block: decompression failed\n";
       break;
     }
 
     if (!write_all(out, out_buf.data(), decoded)) {
-      std::cerr << "LZ4 legacy: fwrite failed\n";
+      std::cerr << "LZ4 block: fwrite failed\n";
       break;
     }
   }
 
-  fclose(out);
+  if (fclose(out) != 0) {
+    std::cerr << "LZ4 block: fclose failed: " << filepath << '\n';
+    return false;
+  }
+
   return ok;
+}
+
+bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
+                           size_t size) {
+  return decompress_lz4_block(filepath, data, size, false);
+}
+
+bool decompress_lz4_lg(const char *filepath, const uint8_t *data, size_t size) {
+  return decompress_lz4_block(filepath, data, size, true);
 }
 
 bool decompress_lz4(const char *filepath, const uint8_t *data, size_t size) {

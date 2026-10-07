@@ -1,6 +1,46 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 _LZ4_DIR = "lz4/lib"
+_BZIP2_DIR = "bzip2"
+_LZO_DIR = "lzo/minilzo"
+
+# zlib ships its own Bazel package; expose it under the `//third_party:zlib`
+# label so the rest of the build has a single dependency entry point.
+alias(
+    name = "zlib",
+    actual = "//third_party/zlib:zlib",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "bzip2",
+    srcs = [
+        _BZIP2_DIR + "/blocksort.c",
+        _BZIP2_DIR + "/bzlib.c",
+        _BZIP2_DIR + "/compress.c",
+        _BZIP2_DIR + "/crctable.c",
+        _BZIP2_DIR + "/decompress.c",
+        _BZIP2_DIR + "/huffman.c",
+        _BZIP2_DIR + "/randtable.c",
+    ],
+    hdrs = [_BZIP2_DIR + "/bzlib.h"],
+    textual_hdrs = [_BZIP2_DIR + "/bzlib_private.h"],
+    includes = [_BZIP2_DIR],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "lzo",
+    srcs = [_LZO_DIR + "/minilzo.c"],
+    hdrs = [_LZO_DIR + "/minilzo.h"],
+    textual_hdrs = glob(["lzo/include/lzo/*.h"]),
+    includes = [
+        _LZO_DIR,
+        "lzo/include",
+        "lzo/include/lzo",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 cc_library(
     name = "lz4",

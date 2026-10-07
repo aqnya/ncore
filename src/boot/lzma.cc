@@ -1,3 +1,4 @@
+#include <cstring>
 #include <iostream>
 #include <lzma.h>
 #include <string>
@@ -27,6 +28,66 @@ int init_decompress(lzma_stream *strm) {
   return -1;
 }
 } // namespace
+
+bool decompress_lzma(const char *filepath, const uint8_t *data, size_t size) {
+  lzma_stream strm = LZMA_STREAM_INIT;
+  lzma_ret ret = lzma_alone_decoder(&strm, UINT64_MAX);
+  if (ret != LZMA_OK) {
+    std::cerr << "Error initializing the lzma decoder: " << ret << std::endl;
+    return false;
+  }
+
+  FILE *outfile = fopen(filepath, "wb");
+  if (!outfile) {
+    fprintf(stderr, "Failed to open '%s': %s\n", filepath, strerror(errno));
+    lzma_end(&strm);
+    return false;
+  }
+
+  uint8_t outbuf[BUFSIZ];
+  strm.next_in = data;
+  strm.avail_in = size;
+  strm.next_out = outbuf;
+  strm.avail_out = sizeof(outbuf);
+
+  bool ok = false;
+
+  while (true) {
+    ret = lzma_code(&strm, LZMA_FINISH);
+
+    if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+      const size_t write_size = sizeof(outbuf) - strm.avail_out;
+      if (fwrite(outbuf, 1, write_size, outfile) != write_size) {
+        fprintf(stderr, "Write error: %s\n", strerror(errno));
+        break;
+      }
+      strm.next_out = outbuf;
+      strm.avail_out = sizeof(outbuf);
+    }
+
+    if (ret == LZMA_STREAM_END) {
+      ok = true;
+      break;
+    }
+
+    if (ret != LZMA_OK) {
+      std::cerr << "lzma decoder error: " << ret << std::endl;
+      break;
+    }
+
+    if (strm.avail_in == 0 && strm.avail_out == sizeof(outbuf)) {
+      std::cerr << "lzma: truncated stream" << std::endl;
+      break;
+    }
+  }
+
+  lzma_end(&strm);
+  if (fclose(outfile) != 0) {
+    fprintf(stderr, "Close error: %s\n", strerror(errno));
+    return false;
+  }
+  return ok;
+}
 
 bool decompress_xz(const char *filepath, const uint8_t *data, size_t size) {
   lzma_stream strm = LZMA_STREAM_INIT;

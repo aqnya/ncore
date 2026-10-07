@@ -4,3 +4,12 @@
 [submodule "third_party/xz"]
 	path = third_party/xz
 	url = https://github.com/tukaani-project/xz.git
+[submodule "third_party/zlib"]
+	path = third_party/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "third_party/bzip2"]
+	path = third_party/bzip2
+	url = https://github.com/libarchive/bzip2.git
+[submodule "third_party/lzo"]
+	path = third_party/lzo
+	url = https://github.com/nemequ/lzo.git
