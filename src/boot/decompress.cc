@@ -1,123 +1,168 @@
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <lz4.h>
-#include <lz4file.h>
-#include <memory>
+#include <lz4frame.h>
 #include <vector>
 
 namespace boot {
 
-constexpr size_t BLOCK_SIZE = 8 << 20; // 8MB
+namespace {
+
+constexpr size_t kLegacyBlockSize = 8 << 20;
+constexpr size_t kFrameBufferSize = 16 << 10;
+
+constexpr uint32_t kLegacyMagic = 0x184C2102;
+
+bool write_all(FILE *fp, const void *data, size_t size) {
+  return size == 0 || fwrite(data, 1, size, fp) == size;
+}
+
+bool read_u32(const uint8_t *&p, const uint8_t *end, uint32_t &value) {
+  if (static_cast<size_t>(end - p) < sizeof(value))
+    return false;
+
+  std::memcpy(&value, p, sizeof(value));
+  p += sizeof(value);
+  return true;
+}
+
+} // namespace
 
 bool decompress_lz4_legacy(const char *filepath, const uint8_t *data,
                            size_t size) {
   const uint8_t *p = data;
   const uint8_t *end = data + size;
 
-  if (p + 4 > end) {
-    std::cerr << "read magic failed" << std::endl;
-    return false;
-  }
   uint32_t magic;
-  std::memcpy(&magic, p, 4);
-  p += 4;
-  if (magic != 0x184C2102) {
-    std::cerr << "bad magic: 0x" << std::hex << magic << std::endl;
+  if (!read_u32(p, end, magic)) {
+    std::cerr << "LZ4 legacy: truncated magic\n";
     return false;
   }
+
+  if (magic != kLegacyMagic) {
+    std::cerr << "LZ4 legacy: bad magic: 0x" << std::hex << magic << std::dec
+              << '\n';
+    return false;
+  }
+
   FILE *out = fopen(filepath, "wb");
+  if (!out) {
+    std::cerr << "fopen failed: " << filepath << '\n';
+    return false;
+  }
 
-  std::vector<char> in_buf(LZ4_compressBound(BLOCK_SIZE));
-  std::vector<char> out_buf(BLOCK_SIZE);
+  std::vector<char> in(kLegacyBlockSize);
+  std::vector<char> out_buf(kLegacyBlockSize);
 
-  while (p + 4 <= end) {
+  bool ok = false;
+
+  while (p < end) {
     uint32_t block_size;
-    std::memcpy(&block_size, p, 4);
-    p += 4;
 
-    if (block_size == 0 || block_size > in_buf.size()) {
-      return false;
-    }
-    if (p + block_size > end) {
-      return false;
+    if (!read_u32(p, end, block_size)) {
+      std::cerr << "LZ4 legacy: truncated block size\n";
+      break;
     }
 
-    std::memcpy(in_buf.data(), p, block_size);
+    if (block_size == 0) {
+      // End marker.
+      ok = true;
+      break;
+    }
+
+    if (block_size > kLegacyBlockSize) {
+      std::cerr << "LZ4 legacy: block too large: " << block_size << '\n';
+      break;
+    }
+
+    if (static_cast<size_t>(end - p) < block_size) {
+      std::cerr << "LZ4 legacy: truncated block\n";
+      break;
+    }
+
+    std::memcpy(in.data(), p, block_size);
     p += block_size;
 
-    int decoded = LZ4_decompress_safe(in_buf.data(), out_buf.data(), block_size,
-                                      BLOCK_SIZE);
-    if (decoded <= 0) {
-      return false;
+    const int decoded = LZ4_decompress_safe(in.data(), out_buf.data(),
+                                            static_cast<int>(block_size),
+                                            static_cast<int>(kLegacyBlockSize));
+
+    if (decoded < 0) {
+      std::cerr << "LZ4 legacy: decompression failed\n";
+      break;
     }
 
-    if (fwrite(out_buf.data(), 1, decoded, out) != (size_t)decoded) {
-      return false;
-    }
-
-    if (decoded < BLOCK_SIZE) {
+    if (!write_all(out, out_buf.data(), decoded)) {
+      std::cerr << "LZ4 legacy: fwrite failed\n";
       break;
     }
   }
-  return true;
+
+  fclose(out);
+  return ok;
 }
 
-constexpr size_t kBufferSize = 16 * 1024;
-
 bool decompress_lz4(const char *filepath, const uint8_t *data, size_t size) {
-  FILE *out_fd = fopen(filepath, "wb");
-  if (!out_fd) {
-    std::cerr << "fopen failed: " << filepath << std::endl;
+  FILE *out = fopen(filepath, "wb");
+  if (!out) {
+    std::cerr << "fopen failed: " << filepath << '\n';
     return false;
   }
 
-  FILE *fp = fmemopen(const_cast<uint8_t *>(data), size, "rb");
-  if (!fp) {
-    std::cerr << "fmemopen failed" << std::endl;
-    fclose(out_fd);
-    return false;
-  }
+  LZ4F_dctx *ctx = nullptr;
 
-  std::unique_ptr<char[]> buffer;
-  try {
-    buffer = std::make_unique<char[]>(kBufferSize);
-  } catch (const std::bad_alloc &) {
-    std::cerr << "buffer alloc failed" << std::endl;
-    fclose(fp);
-    fclose(out_fd);
-    return false;
-  }
+  size_t ret = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
 
-  LZ4_readFile_t *lz4fRead = nullptr;
-  size_t ret = LZ4F_readOpen(&lz4fRead, fp);
   if (LZ4F_isError(ret)) {
-    std::cerr << "LZ4F_readOpen error: " << LZ4F_getErrorName(ret) << std::endl;
-    fclose(fp);
-    fclose(out_fd);
+    std::cerr << "LZ4F_createDecompressionContext: " << LZ4F_getErrorName(ret)
+              << '\n';
+    fclose(out);
     return false;
   }
 
-  bool ok = true;
-  while (true) {
-    ret = LZ4F_read(lz4fRead, buffer.get(), kBufferSize);
+  std::vector<uint8_t> buffer(kFrameBufferSize);
+
+  const uint8_t *src = data;
+  size_t remaining = size;
+
+  bool ok = false;
+
+  while (remaining > 0) {
+    size_t src_size = remaining;
+    size_t dst_size = buffer.size();
+
+    ret =
+        LZ4F_decompress(ctx, buffer.data(), &dst_size, src, &src_size, nullptr);
+
     if (LZ4F_isError(ret)) {
-      std::cerr << "LZ4F_read error: " << LZ4F_getErrorName(ret) << std::endl;
-      ok = false;
+      std::cerr << "LZ4F_decompress: " << LZ4F_getErrorName(ret) << '\n';
       break;
     }
-    if (ret == 0)
+
+    if (!write_all(out, buffer.data(), dst_size)) {
+      std::cerr << "LZ4F: fwrite failed\n";
       break;
-    if (fwrite(buffer.get(), 1, ret, out_fd) != ret) {
-      std::cerr << "fwrite error" << std::endl;
-      ok = false;
+    }
+
+    src += src_size;
+    remaining -= src_size;
+
+    if (ret == 0) {
+      ok = true;
+      break;
+    }
+
+    if (src_size == 0 && dst_size == 0) {
+      std::cerr << "LZ4F: decompression made no progress\n";
       break;
     }
   }
 
-  LZ4F_readClose(lz4fRead);
-  fclose(fp);
-  fclose(out_fd);
+  LZ4F_freeDecompressionContext(ctx);
+  fclose(out);
+
   return ok;
 }
 

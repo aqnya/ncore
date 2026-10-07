@@ -19,7 +19,6 @@ enum class boottype : uint8_t {
 constexpr uint32_t GZIP2_MAGIC   = 0x00009e1f;
 constexpr uint32_t LZOP_MAGIC    = 0x4f5a4c89;
 constexpr uint32_t XZ_MAGIC      = 0x587a37fd;
-constexpr uint32_t BZIP_MAGIC    = 0x00685a42;
 constexpr uint32_t LZ41_MAGIC    = 0x184c2103;
 constexpr uint32_t LZ42_MAGIC    = 0x184d2204;
 constexpr uint32_t LZ4_LEG_MAGIC = 0x184c2102;
@@ -95,4 +94,5 @@ private:
 boottype probe_type(MMapFile &bootimg);
 void decompress_lz4(const char* filepath,const uint8_t *data, size_t size);
 bool decompress_lz4_legacy(const char* filepath,const uint8_t *data, size_t size);
+bool decompress_xz(const char *filepath, const uint8_t *data, size_t size);
 } // namespace boot

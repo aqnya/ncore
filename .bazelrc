@@ -1,5 +1,7 @@
 build --copt=-O3
 build --linkopt=-O3
+build --linkopt=-flto=full
+build --linkopt=-Wl,--lto-O3
 
 build:android --platforms=//:android_arm64
 build:android --extra_toolchains=@androidndk//:all

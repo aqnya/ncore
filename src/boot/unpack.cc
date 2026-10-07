@@ -34,9 +34,7 @@ bool write_file(const char *path, const void *data, size_t size) {
     break;
   case XZ_MAGIC:
     std::cout << "xz compress" << std::endl;
-    break;
-  case BZIP_MAGIC:
-    std::cout << "bzip compress" << std::endl;
+    decompress_xz(path,static_cast<const uint8_t *>(data), size);
     break;
   case LZ41_MAGIC:
     std::cout << "lz41 compress" << std::endl;

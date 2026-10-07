@@ -22,6 +22,7 @@ cc_library(
         "src/boot/prase.cc",
         "src/boot/unpack.cc",
         "src/boot/decompress.cc",
+        "src/boot/lzma.cc",
     ],
     hdrs = [
         "include/boot/boot.hpp",
@@ -29,7 +30,10 @@ cc_library(
         "src/boot/bootimg.h",
     ],
     includes = ["include"],
-    deps = ["//third_party:lz4_file"],
+    deps = [
+    "@lz4//:lz4_frame",
+    "@xz//:lzma",
+    ],
     visibility = ["//visibility:public"],
 )
 
