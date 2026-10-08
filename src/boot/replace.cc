@@ -80,6 +80,7 @@ constexpr size_t VENDOR_V3_RAMDISK_SIZE_OFF = 24;
 constexpr size_t VENDOR_V3_DTB_SIZE_OFF = 2100;
 // vendor v4 appends the table fields after the 2112-byte vendor v3 base.
 constexpr size_t VENDOR_V4_TABLE_SIZE_OFF = 2112;
+constexpr size_t VENDOR_V4_TABLE_ENTRY_NUM_OFF = 2116;
 constexpr size_t VENDOR_V4_BOOTCONFIG_SIZE_OFF = 2124;
 
 // Tie the offsets above to the actual struct layout so a change to bootimg.h
@@ -340,6 +341,51 @@ int replace(const std::string original, const std::string new_file) {
   target->data = replacement.data();
   target->size = replacement.size();
 
+  // A v4 vendor ramdisk section is a concatenation of one or more individually
+  // compressed ramdisks, and every vendor_ramdisk_table entry describes one of
+  // those sub-ranges. Since the replacement swaps the whole section for a single
+  // image, the table no longer matches: rewrite it as one entry spanning the new
+  // section. For the common single-entry table this is just an in-place size
+  // sync; for a multi-entry table the entries are collapsed into the one ramdisk
+  // that now makes up the section. Keep the first entry's type, name and
+  // hardware ids so the replacement stays identifiable.
+  std::vector<uint8_t> vendor_table;
+  size_t vendor_table_entry_num_off = npos;
+  if (b == boottype::vendor_boot_img_hdr_v4 &&
+      target->name == "vendor_ramdisk") {
+    section *table = nullptr;
+    for (section &s : sections) {
+      if (s.name == "vendor_ramdisk_table") {
+        table = &s;
+        break;
+      }
+    }
+
+    vendor_boot_img_hdr_v4 vhead{};
+    if (table != nullptr && read_struct(image, 0, vhead) &&
+        vhead.vendor_ramdisk_table_entry_num > 0 &&
+        vhead.vendor_ramdisk_table_entry_size ==
+            sizeof(vendor_ramdisk_table_entry_v4) &&
+        table->size >= sizeof(vendor_ramdisk_table_entry_v4)) {
+      if (vhead.vendor_ramdisk_table_entry_num > 1) {
+        std::cerr << "replace: collapsing " << vhead.vendor_ramdisk_table_entry_num
+                  << " vendor ramdisk table entries into one" << std::endl;
+      }
+
+      vendor_ramdisk_table_entry_v4 entry{};
+      std::memcpy(&entry, table->data, sizeof(entry));
+      entry.ramdisk_offset = 0;
+      entry.ramdisk_size = static_cast<uint32_t>(target->size);
+      vendor_table.assign(reinterpret_cast<const uint8_t *>(&entry),
+                          reinterpret_cast<const uint8_t *>(&entry) +
+                              sizeof(entry));
+
+      table->data = vendor_table.data();
+      table->size = vendor_table.size();
+      vendor_table_entry_num_off = VENDOR_V4_TABLE_ENTRY_NUM_OFF;
+    }
+  }
+
   // Rebuild: header page(s) first, then every section page aligned. Keeping
   // the layout page-aligned means a changed section size never shifts another
   // section off its boundary.
@@ -347,6 +393,12 @@ int replace(const std::string original, const std::string new_file) {
   output.resize(align_up(header_size, page), 0);
   if (header_size < image.size())
     std::memcpy(output.data(), image.data(), header_size);
+
+  // The rewritten table has exactly one entry; its size field is updated by the
+  // section loop below, but the entry count is not a section size, so write it
+  // here after the header copy.
+  if (vendor_table_entry_num_off != npos)
+    write_le<uint32_t>(output, vendor_table_entry_num_off, 1);
 
   for (section &s : sections) {
     if (s.size == 0)
