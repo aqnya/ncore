@@ -632,38 +632,6 @@ void load_system_prop() {
   });
 }
 
-void load_sepolicy_rule() {
-  const std::string sink = defs::sepolicy_sink();
-  if (!utils::exists(sink))
-    return;
-
-  const int fd = ::open(sink.c_str(), O_WRONLY | O_CLOEXEC);
-  if (fd < 0) {
-    std::cerr << "[module] cannot open sepolicy sink " << sink << ": "
-              << std::strerror(errno) << std::endl;
-    return;
-  }
-
-  // The kernel sink reads the rule file itself, so hand it one path per
-  // write. Rules must be in place before any module script runs.
-  foreach_module(ModuleType::Active, [&](const std::string &module) {
-    const std::string rule = utils::join(module, "sepolicy.rule");
-    if (!utils::is_file(rule))
-      return;
-
-    const std::string line = rule + "\n";
-    const ssize_t written = ::write(fd, line.c_str(), line.size());
-    if (written < 0) {
-      std::cerr << "[module] failed to load " << rule << ": "
-                << std::strerror(errno) << std::endl;
-    } else {
-      std::cout << "[module] load sepolicy.rule: " << rule << std::endl;
-    }
-  });
-
-  ::close(fd);
-}
-
 bool regenerate_preinit_rc() {
   const std::string dir = preinit_ksu_dir();
   if (!utils::ensure_dir_exists(dir))

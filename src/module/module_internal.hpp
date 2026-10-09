@@ -63,11 +63,6 @@ const std::string &busybox_path();
 const std::string &preinit_dir_watchdog();
 const std::string &preinit_dir_default();
 
-// Write-only kernel sink the module sepolicy.rule files are handed to. nksu
-// exposes it at /proc/nksu/sepolicy; the host can override it (or point it at
-// nothing) with NCORE_SEPOLICY_SINK.
-const std::string &sepolicy_sink();
-
 // Where the kernel execs ncore from at boot (init.rc). The daemon copies
 // /proc/self/exe here; the host can override it with NCORE_BOOT_PATH.
 const std::string &boot_path();
@@ -159,10 +154,9 @@ void disable_all_modules();
 void load_system_prop();
 bool regenerate_preinit_rc();
 
-// Push every active module's sepolicy.rule to the kernel sink
-// (defs::sepolicy_sink()), one rule file path per write, so the kernel can
-// apply the SELinux rules before any module script runs. Missing sink or
-// missing rule files are silently skipped.
+// Push every active module's sepolicy.rule to the kernel (parsed into the
+// KernelSU batch format and sent through the nksu control fd or
+// /proc/nksu/sepolicy). Missing rule files are skipped.
 void load_sepolicy_rule();
 
 } // namespace modules
