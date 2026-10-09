@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <ctime>
+#include <fcntl.h>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -507,6 +508,9 @@ int on_post_fs_data() {
   if (!regenerate_preinit_rc())
     std::cerr << "[module] regenerate preinit rc failed" << std::endl;
 
+  // Module SELinux rules must be live before any module script runs.
+  load_sepolicy_rule();
+
   metamodule_exec_stage_script("post-fs-data", wait, deadline);
   exec_stage_script("post-fs-data", wait, deadline);
 
@@ -624,6 +628,38 @@ void load_system_prop() {
         utils::setprop(key, value);
     }
   });
+}
+
+void load_sepolicy_rule() {
+  const std::string sink = defs::sepolicy_sink();
+  if (!utils::exists(sink))
+    return;
+
+  const int fd = ::open(sink.c_str(), O_WRONLY | O_CLOEXEC);
+  if (fd < 0) {
+    std::cerr << "[module] cannot open sepolicy sink " << sink << ": "
+              << std::strerror(errno) << std::endl;
+    return;
+  }
+
+  // The kernel sink reads the rule file itself, so hand it one path per
+  // write. Rules must be in place before any module script runs.
+  foreach_module(ModuleType::Active, [&](const std::string &module) {
+    const std::string rule = utils::join(module, "sepolicy.rule");
+    if (!utils::is_file(rule))
+      return;
+
+    const std::string line = rule + "\n";
+    const ssize_t written = ::write(fd, line.c_str(), line.size());
+    if (written < 0) {
+      std::cerr << "[module] failed to load " << rule << ": "
+                << std::strerror(errno) << std::endl;
+    } else {
+      std::cout << "[module] load sepolicy.rule: " << rule << std::endl;
+    }
+  });
+
+  ::close(fd);
 }
 
 bool regenerate_preinit_rc() {

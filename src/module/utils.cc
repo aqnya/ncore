@@ -90,6 +90,12 @@ const std::string &preinit_dir_default() {
   return value;
 }
 
+const std::string &sepolicy_sink() {
+  static const std::string value =
+      env_or("NCORE_SEPOLICY_SINK", "/proc/nksu/sepolicy");
+  return value;
+}
+
 } // namespace defs
 
 namespace utils {
