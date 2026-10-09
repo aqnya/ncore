@@ -107,6 +107,11 @@ int parse_cli(int argc, char *argv[], arguments &args) {
   boot_completed.add_description("trigger the `boot-completed` init event");
   program.add_subparser(boot_completed);
 
+  // --- daemon installation -------------------------------------------------
+  argparse::ArgumentParser install("install");
+  install.add_description("install the ncore daemon to its boot path");
+  program.add_subparser(install);
+
   // --- module management ---------------------------------------------------
   argparse::ArgumentParser module_cmd("module");
   module_cmd.add_description("manage modules");
@@ -179,6 +184,9 @@ int parse_cli(int argc, char *argv[], arguments &args) {
     return run_module_event("service");
   if (program.is_subcommand_used("boot-completed"))
     return run_module_event("boot-completed");
+
+  if (program.is_subcommand_used("install"))
+    return modules::install();
 
   // --- module management ---------------------------------------------------
   if (program.is_subcommand_used("module"))

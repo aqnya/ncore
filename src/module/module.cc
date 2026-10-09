@@ -8,7 +8,9 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 // Userspace module runtime, ported from KernelSU's ksud. The behaviour of each
@@ -841,6 +843,77 @@ int refresh_initrc() {
     std::cerr << "[module] regenerate preinit rc failed" << std::endl;
     return 1;
   }
+  return 0;
+}
+
+int install() {
+  const std::string target = defs::boot_path();
+  const std::string dir = utils::dir_name(target);
+
+  if (!utils::ensure_dir_exists(dir)) {
+    std::cerr << "[module] cannot create " << dir << std::endl;
+    return 1;
+  }
+
+  // Copy through /proc/self/exe rather than its resolved path: this is the
+  // running ncore (the APK's libncore.so), and it stays valid even when the
+  // destination is the same file, mirroring KernelSU's `ksud install`.
+  const int in = ::open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+  if (in < 0) {
+    std::cerr << "[module] open /proc/self/exe failed: "
+              << std::strerror(errno) << std::endl;
+    return 1;
+  }
+
+  const int out = ::open(target.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                         0755);
+  if (out < 0) {
+    std::cerr << "[module] open " << target << " failed: "
+              << std::strerror(errno) << std::endl;
+    ::close(in);
+    return 1;
+  }
+
+  char buf[65536];
+  for (;;) {
+    const ssize_t r = ::read(in, buf, sizeof(buf));
+    if (r == 0)
+      break;
+    if (r < 0) {
+      if (errno == EINTR)
+        continue;
+      std::cerr << "[module] read failed: " << std::strerror(errno) << std::endl;
+      ::close(in);
+      ::close(out);
+      return 1;
+    }
+    ssize_t off = 0;
+    while (off < r) {
+      const ssize_t w = ::write(out, buf + off, static_cast<size_t>(r - off));
+      if (w < 0) {
+        if (errno == EINTR)
+          continue;
+        std::cerr << "[module] write failed: " << std::strerror(errno)
+                  << std::endl;
+        ::close(in);
+        ::close(out);
+        return 1;
+      }
+      off += w;
+    }
+  }
+  ::close(in);
+  ::close(out);
+
+  if (::chmod(target.c_str(), 0755) != 0)
+    std::cerr << "[module] chmod failed: " << std::strerror(errno) << std::endl;
+
+  // Best effort SELinux label so init can exec it. nksu's domain is
+  // unconfined, so a failure here is cosmetic.
+  const char con[] = "u:object_r:system_file:s0";
+  ::setxattr(target.c_str(), "security.selinux", con, sizeof(con) - 1, 0);
+
+  std::cout << "[module] installed " << target << std::endl;
   return 0;
 }
 

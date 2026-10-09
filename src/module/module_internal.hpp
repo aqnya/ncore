@@ -68,6 +68,10 @@ const std::string &preinit_dir_default();
 // nothing) with NCORE_SEPOLICY_SINK.
 const std::string &sepolicy_sink();
 
+// Where the kernel execs ncore from at boot (init.rc). The daemon copies
+// /proc/self/exe here; the host can override it with NCORE_BOOT_PATH.
+const std::string &boot_path();
+
 } // namespace defs
 
 namespace utils {

@@ -45,4 +45,8 @@ int run_action(const std::string &id);
 // Rebuild the preinit modules.rc from enabled modules. Returns 0 on success.
 int refresh_initrc();
 
+// Copy /proc/self/exe to the boot path (defs::boot_path()) so init.rc can
+// exec ncore at boot. Returns 0 on success.
+int install();
+
 } // namespace modules

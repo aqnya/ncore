@@ -96,6 +96,12 @@ const std::string &sepolicy_sink() {
   return value;
 }
 
+const std::string &boot_path() {
+  static const std::string value =
+      env_or("NCORE_BOOT_PATH", "/data/adb/nksu/ncore");
+  return value;
+}
+
 } // namespace defs
 
 namespace utils {
