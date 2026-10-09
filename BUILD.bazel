@@ -45,6 +45,20 @@ cc_library(
 )
 
 cc_library(
+    name = "module",
+    srcs = [
+        "src/module/module.cc",
+        "src/module/utils.cc",
+    ],
+    hdrs = [
+        "include/module/module.hpp",
+        "src/module/module_internal.hpp",
+    ],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "cli",
     srcs = ["src/cli/cli.cc"],
     hdrs = ["include/cli.hpp"],
@@ -52,6 +66,7 @@ cc_library(
     deps = [
         ":argparse",
         ":boot",
+        ":module",
     ],
     visibility = ["//visibility:public"],
 )
