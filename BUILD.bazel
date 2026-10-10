@@ -59,6 +59,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        "//third_party:xz",
         "//third_party:zlib",
     ],
     visibility = ["//visibility:public"],

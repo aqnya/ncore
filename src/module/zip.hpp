@@ -6,8 +6,9 @@
 
 // Minimal read-only ZIP reader used by the module installer. KernelSU reads
 // module packages with the Rust `zip` crate; ncore does not link a zip library,
-// so this implements just enough of the format for module installation:
-// stored (0) and deflate (8) entries, enumerated through the central directory.
+// so this implements just enough of the format for module installation: stored
+// (0), deflate (8) and xz (95) entries, enumerated through the central
+// directory.
 namespace modules {
 
 class ZipArchive {

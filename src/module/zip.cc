@@ -4,6 +4,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
+#include <lzma.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <zlib.h>
@@ -20,6 +21,7 @@ constexpr uint32_t kZip64EndOfCentralDirLocatorSig = 0x07064b50;
 
 constexpr uint16_t kMethodStore = 0;
 constexpr uint16_t kMethodDeflate = 8;
+constexpr uint16_t kMethodXz = 95; // .xz container, as produced by `zip -Z xz`
 constexpr size_t kEndOfCentralDirSize = 22;
 
 uint16_t read_u16(const uint8_t *p) {
@@ -58,6 +60,45 @@ bool pread_all(int fd, uint64_t offset, void *buffer, size_t count) {
 void set_error(std::string *error, const std::string &message) {
   if (error != nullptr)
     *error = message;
+}
+
+// Inflate a raw `.xz` stream (ZIP method 95). liblzma is already vendored for
+// the boot-image code. `expected` is the uncompressed size from the central
+// directory; the CRC check in read_entry() still validates the result.
+bool inflate_xz(const std::string &in, size_t expected, std::string &out,
+                const std::string &name, std::string *error) {
+  lzma_stream strm = LZMA_STREAM_INIT;
+  if (lzma_stream_decoder(&strm, UINT64_MAX, LZMA_CONCATENATED) != LZMA_OK) {
+    set_error(error, "lzma init failed for " + name);
+    return false;
+  }
+
+  out.assign(expected, '\0');
+  const size_t capacity = out.empty() ? 1 : out.size();
+  uint8_t scratch = 0;
+  strm.next_in = reinterpret_cast<const uint8_t *>(in.data());
+  strm.avail_in = in.size();
+  strm.next_out = out.empty() ? &scratch : reinterpret_cast<uint8_t *>(&out[0]);
+  strm.avail_out = capacity;
+
+  lzma_ret ret = LZMA_OK;
+  while (true) {
+    const size_t in_before = strm.avail_in;
+    const size_t out_before = strm.avail_out;
+    ret = lzma_code(&strm, LZMA_FINISH);
+    if (ret != LZMA_OK ||
+        (strm.avail_in == in_before && strm.avail_out == out_before))
+      break;
+  }
+
+  const size_t produced = capacity - strm.avail_out;
+  lzma_end(&strm);
+  if (ret != LZMA_STREAM_END) {
+    set_error(error, "failed to decompress " + name);
+    return false;
+  }
+  out.resize(produced);
+  return true;
 }
 
 // Split `name` into safe path components. Rejects absolute paths and `..`
@@ -318,6 +359,11 @@ bool ZipArchive::read_entry(const Entry &entry, std::string &out,
       return false;
     }
     out.resize(strm.total_out);
+  } else if (entry.method == kMethodXz) {
+    if (!inflate_xz(compressed,
+                    static_cast<size_t>(entry.uncompressed_size), out,
+                    entry.name, error))
+      return false;
   } else {
     set_error(error, "unsupported compression method for " + entry.name);
     return false;
