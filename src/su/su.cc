@@ -92,12 +92,20 @@ int run(int argc, char *argv[]) {
     const std::string arg = argv[i] != nullptr ? argv[i] : "";
 
     if (arg == "-c" || arg == "--command") {
-      if (i + 1 >= argc) {
-        std::cerr << "su: option " << arg << " needs an argument" << std::endl;
-        return 1;
+      // Android su (and KernelSU's ksud) treat everything after -c as the
+      // command, joining the words back with spaces.  tsu and Termux's sudo
+      // rely on this: they pass the script unquoted, so it arrives as many
+      // argv entries.
+      std::string joined;
+      for (int j = i + 1; j < argc; ++j) {
+        if (j > i + 1)
+          joined.push_back(' ');
+        if (argv[j] != nullptr)
+          joined += argv[j];
       }
-      command = argv[++i];
+      command = joined;
       have_command = true;
+      break; // the rest of the command line is the command
     } else if (arg.rfind("--command=", 0) == 0) {
       command = arg.substr(strlen("--command="));
       have_command = true;
