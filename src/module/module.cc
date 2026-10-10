@@ -1151,6 +1151,30 @@ abort() {
 
 toupper() { echo "$@" | tr '[:lower:]' '[:upper:]'; }
 
+grep_cmdline() {
+  local REGEX="s/^$1=//p"
+  { echo $(cat /proc/cmdline)$(sed -e 's/[^"]//g' -e 's/""//g' /proc/cmdline) | xargs -n 1; \
+    sed -e 's/ = /=/g' -e 's/, /,/g' -e 's/"//g' /proc/bootconfig; \
+  } 2>/dev/null | sed -n "$REGEX"
+}
+
+grep_prop() {
+  local REGEX="s/$1=//p"
+  shift
+  local FILES=$@
+  [ -z "$FILES" ] && FILES='/system/build.prop'
+  cat $FILES 2>/dev/null | dos2unix | sed -n "$REGEX" | head -n 1 | xargs
+}
+
+grep_get_prop() {
+  local result=$(grep_prop $@)
+  if [ -z "$result" ]; then
+    getprop "$1"
+  else
+    echo $result
+  fi
+}
+
 print_title() {
   local line1len line2len len bar
   line1len=$(echo -n "$1" | wc -c)
