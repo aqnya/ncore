@@ -117,9 +117,9 @@ std::vector<std::string> build_env(const std::string &module_id) {
   return env;
 }
 
-// Resolve the script interpreter. KernelSU always uses its bundled busybox, but
-// ncore may not ship one, so fall back to busybox on PATH and finally to the
-// system shell.
+// Resolve the script interpreter. ncore ships its own busybox under its runtime
+// directory (/data/adb/nksu/bin/busybox); fall back to busybox on PATH and
+// finally the system shell.
 struct ShellSpec {
   std::string program;
   std::vector<std::string> argv; // argv[0] included
@@ -192,7 +192,7 @@ std::string extract_module_id(const std::string &path) {
   return validate_module_id(id) ? id : std::string();
 }
 
-std::string preinit_ksu_dir() {
+std::string preinit_dir() {
   const std::string watchdog_parent = utils::dir_name(
       utils::strip_trailing_slash(defs::preinit_dir_watchdog()));
   if (utils::is_dir(watchdog_parent))
@@ -750,7 +750,7 @@ void load_system_prop() {
 }
 
 bool regenerate_preinit_rc() {
-  const std::string dir = preinit_ksu_dir();
+  const std::string dir = preinit_dir();
   if (!utils::ensure_dir_exists(dir))
     return false;
 

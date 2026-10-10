@@ -34,11 +34,14 @@ constexpr const char *MODULES_RC_TMP_FILE = ".modules.rc.tmp";
 
 constexpr const char *SYSTEM_SH_PATH = "/system/bin/sh";
 
-// Default layout, identical to KernelSU so existing modules work unchanged.
+// Default layout. Module data stays in the KernelSU/Magisk location
+// (/data/adb/modules) so existing modules work unchanged, but ncore's own
+// runtime (busybox, logs, temp files) lives under /data/adb/nksu/ alongside the
+// boot binary, so ncore does not depend on a KernelSU installation.
 constexpr const char *DEFAULT_ADB_DIR = "/data/adb/";
-constexpr const char *DEFAULT_WORKING_DIR = "/data/adb/ksu/";
-constexpr const char *DEFAULT_PREINIT_DIR_WATCHDOG = "/metadata/watchdog/ksu/";
-constexpr const char *DEFAULT_PREINIT_DIR_DEFAULT = "/metadata/ksu/";
+constexpr const char *DEFAULT_WORKING_DIR = "/data/adb/nksu/";
+constexpr const char *DEFAULT_PREINIT_DIR_WATCHDOG = "/metadata/watchdog/nksu/";
+constexpr const char *DEFAULT_PREINIT_DIR_DEFAULT = "/metadata/nksu/";
 
 // Same shared deadline ksud uses for the post-fs-data stage.
 constexpr int BOOT_STAGE_TIMEOUT_SEC = 35;
@@ -50,9 +53,10 @@ constexpr const char *KSU_VERSION_CODE = "0";
 constexpr const char *KSU_UAPI_VERSION = "0";
 constexpr const char *KSU_RUNTIME_MODE = "0";
 
-// Base directories. These default to the KernelSU layout but can be
-// overridden through NCORE_ADB_DIR / NCORE_WORKING_DIR, which is useful for
-// tests and for ports that use a different data directory.
+// Base directories. Module data uses the KernelSU/Magisk layout; ncore's own
+// runtime defaults to /data/adb/nksu/. Both can be overridden through
+// NCORE_ADB_DIR / NCORE_WORKING_DIR, which is useful for tests and for ports
+// that use a different data directory.
 const std::string &adb_dir();
 const std::string &working_dir();
 const std::string &binary_dir();
