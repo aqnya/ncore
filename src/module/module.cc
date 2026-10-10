@@ -99,7 +99,7 @@ std::vector<std::string> build_env(const std::string &module_id) {
   std::vector<std::string> env = inherited_env();
   set_env(env, "ASH_STANDALONE", "1");
   set_env(env, "KSU", "true");
-  set_env(env, "KSU_KERNEL_VER_CODE", "0");
+  set_env(env, "KSU_KERNEL_VER_CODE", defs::KSU_KERNEL_VERSION_CODE);
   set_env(env, "KSU_VER_CODE", defs::KSU_VERSION_CODE);
   set_env(env, "KSU_VER", defs::KSU_VERSION_NAME);
   set_env(env, "KSU_UAPI_VER", defs::KSU_UAPI_VERSION);

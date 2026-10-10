@@ -47,10 +47,16 @@ constexpr int BOOT_STAGE_TIMEOUT_SEC = 35;
 
 // KernelSU exposes these to module scripts. ncore keeps the KSU_* names so
 // modules written for KernelSU can be reused verbatim.
+//
+// Modules gate on the version codes, so 0 makes them abort: Zygisk Next's
+// customize.sh refuses to install unless KSU_KERNEL_VER_CODE >= 10940 and
+// KSU_VER_CODE >= 11575 ("KernelSU version is too old"). KernelSU numbers
+// releases as 30000 + git-count, so advertise the base of that scheme.
 constexpr const char *KSU_VERSION_NAME = "ncore";
-constexpr const char *KSU_VERSION_CODE = "0";
-constexpr const char *KSU_UAPI_VERSION = "0";
-constexpr const char *KSU_RUNTIME_MODE = "0";
+constexpr const char *KSU_VERSION_CODE = "30000";
+constexpr const char *KSU_KERNEL_VERSION_CODE = "30000";
+constexpr const char *KSU_UAPI_VERSION = "5";
+constexpr const char *KSU_RUNTIME_MODE = "lkm";
 
 // Base directories. Module data uses the KernelSU/Magisk layout; ncore's own
 // runtime defaults to /data/adb/nksu/. Both can be overridden through
