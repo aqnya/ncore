@@ -583,8 +583,39 @@ bool metamodule_ensure_symlink(const std::string &module_path) {
 // Init events
 // ---------------------------------------------------------------------------
 
+// KernelSU-compatible alias: modules and scripts reference /data/adb/ksu even
+// when running under nksu (Zygisk Next installs its znctl at
+// /data/adb/ksu/bin/znctl), so point that path at ncore's runtime directory.
+// A pre-existing real KernelSU directory is left untouched.
+static void ensure_ksu_dir_alias() {
+  const std::string nksu = utils::strip_trailing_slash(defs::working_dir());
+  const std::string ksu =
+      utils::strip_trailing_slash(defs::adb_dir()) + "/ksu";
+
+  if (utils::is_symlink(ksu)) {
+    char target[4096];
+    const ssize_t len = ::readlink(ksu.c_str(), target, sizeof(target) - 1);
+    if (len >= 0) {
+      target[len] = '\0';
+      if (nksu == target)
+        return; // already pointing at us
+    }
+    ::unlink(ksu.c_str());
+  } else if (utils::exists(ksu)) {
+    return; // real KernelSU install, do not clobber it
+  }
+
+  if (::symlink(nksu.c_str(), ksu.c_str()) != 0) {
+    std::cerr << "[module] failed to link " << ksu << " -> " << nksu << ": "
+              << std::strerror(errno) << std::endl;
+    return;
+  }
+  std::cout << "[module] linked " << ksu << " -> " << nksu << std::endl;
+}
+
 int on_post_fs_data() {
   utils::umask0();
+  ensure_ksu_dir_alias();
 
   if (utils::has_magisk()) {
     std::cerr << "[module] Magisk detected, skip post-fs-data" << std::endl;
@@ -1060,6 +1091,8 @@ int install() {
     std::cerr << "[module] cannot create " << dir << std::endl;
     return 1;
   }
+
+  ensure_ksu_dir_alias();
 
   // Copy through /proc/self/exe rather than its resolved path: this is the
   // running ncore (the APK's libncore.so), and it stays valid even when the
