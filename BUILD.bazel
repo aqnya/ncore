@@ -72,9 +72,20 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "su",
+    srcs = ["src/su/su.cc"],
+    hdrs = ["include/su/su.hpp"],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
 cc_binary(
     name = "ncore",
     srcs = ["src/main.cc"],
-    deps = [":cli"],
+    deps = [
+        ":cli",
+        ":su",
+    ],
     visibility = ["//visibility:public"],
 )
