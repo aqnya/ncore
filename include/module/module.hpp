@@ -27,6 +27,10 @@ int run_stage(const std::string &stage);
 // Print all installed modules and their metadata. Returns 0 on success.
 int list_modules();
 
+// Print all installed modules as a KernelSU-compatible JSON array (the schema
+// the manager parses). Returns 0 on success.
+int list_modules_json();
+
 // Remove the `disable` flag from module <id>.
 int enable_module(const std::string &id);
 

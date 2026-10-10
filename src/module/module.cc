@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
@@ -764,6 +765,114 @@ int run_action(const std::string &id) {
   }
 
   exec_script(script, ScriptWait::Forever, std::chrono::steady_clock::now());
+  return 0;
+}
+
+namespace {
+
+// Append @value as a JSON string literal, escaping the characters the JSON
+// grammar requires. Mirrors the escaping the kernel used to do.
+void append_json_string(std::string &out, const std::string &value) {
+  out.push_back('"');
+  for (unsigned char c : value) {
+    switch (c) {
+    case '"':
+      out += "\\\"";
+      break;
+    case '\\':
+      out += "\\\\";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      if (c < 0x20) {
+        char esc[7];
+        std::snprintf(esc, sizeof(esc), "\\u%04x", c);
+        out += esc;
+      } else {
+        out.push_back(static_cast<char>(c));
+      }
+    }
+  }
+  out.push_back('"');
+}
+
+} // namespace
+
+int list_modules_json() {
+  const std::string root = utils::strip_trailing_slash(defs::module_dir());
+
+  std::string out = "[";
+  bool first = true;
+
+  if (utils::is_dir(root)) {
+    for (const auto &name : utils::list_dir(root)) {
+      const std::string path = utils::join(root, name);
+      if (!utils::is_dir(path))
+        continue;
+
+      Properties props;
+      read_module_prop(path, props);
+
+      std::string id = prop_get(props, "id");
+      if (id.empty())
+        id = name;
+
+      const bool enabled =
+          !utils::exists(utils::join(path, defs::DISABLE_FILE_NAME));
+      const bool removed =
+          utils::exists(utils::join(path, defs::REMOVE_FILE_NAME));
+      const bool update =
+          utils::exists(utils::join(path, defs::UPDATE_FILE_NAME));
+      const bool skip_mount = utils::exists(utils::join(path, "skip_mount"));
+      const bool has_system = utils::is_dir(utils::join(path, "system"));
+
+      std::string object = "{";
+      auto add_str = [&object](const char *key, const std::string &value) {
+        object += '"';
+        object += key;
+        object += "\":";
+        append_json_string(object, value);
+        object.push_back(',');
+      };
+      auto add_bool = [&object](const char *key, bool value) {
+        object += '"';
+        object += key;
+        object += "\":";
+        object += value ? "true" : "false";
+        object.push_back(',');
+      };
+
+      add_str("id", id);
+      add_str("name", prop_get(props, "name"));
+      add_str("version", prop_get(props, "version"));
+      add_str("versionCode", prop_get(props, "versionCode"));
+      add_str("author", prop_get(props, "author"));
+      add_str("description", prop_get(props, "description"));
+      add_bool("enabled", enabled);
+      add_bool("metamodule", is_metamodule(props));
+      add_bool("update", update);
+      add_bool("remove", removed);
+      add_bool("skipMount", skip_mount);
+      add_bool("hasSystem", has_system);
+      object.back() = '}'; // drop the trailing comma
+
+      if (!first)
+        out.push_back(',');
+      first = false;
+      out += object;
+    }
+  }
+
+  out += "]\n";
+  std::cout << out;
   return 0;
 }
 

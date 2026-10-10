@@ -29,8 +29,12 @@ int run_module_event(const char *event) {
 int run_module_command(argparse::ArgumentParser &program) {
   auto &module_cmd = program.at<argparse::ArgumentParser>("module");
 
-  if (module_cmd.is_subcommand_used("list"))
+  if (module_cmd.is_subcommand_used("list")) {
+    auto &list = module_cmd.at<argparse::ArgumentParser>("list");
+    if (list.get<bool>("--json"))
+      return modules::list_modules_json();
     return modules::list_modules();
+  }
 
   if (module_cmd.is_subcommand_used("enable"))
     return modules::enable_module(
@@ -118,6 +122,10 @@ int parse_cli(int argc, char *argv[], arguments &args) {
 
   argparse::ArgumentParser module_list("list");
   module_list.add_description("list installed modules");
+  module_list.add_argument("--json")
+      .help("emit a KernelSU-compatible JSON array")
+      .default_value(false)
+      .implicit_value(true);
   module_cmd.add_subparser(module_list);
 
   argparse::ArgumentParser module_enable("enable");
