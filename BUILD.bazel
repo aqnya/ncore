@@ -50,12 +50,17 @@ cc_library(
         "src/module/module.cc",
         "src/module/sepolicy.cc",
         "src/module/utils.cc",
+        "src/module/zip.cc",
     ],
     hdrs = [
         "include/module/module.hpp",
         "src/module/module_internal.hpp",
+        "src/module/zip.hpp",
     ],
     includes = ["include"],
+    deps = [
+        "//third_party:zlib",
+    ],
     visibility = ["//visibility:public"],
 )
 

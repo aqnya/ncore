@@ -61,6 +61,11 @@ int run_module_command(argparse::ArgumentParser &program) {
         module_cmd.at<argparse::ArgumentParser>("action").get<std::string>(
             "id"));
 
+  if (module_cmd.is_subcommand_used("install"))
+    return modules::install_module(
+        module_cmd.at<argparse::ArgumentParser>("install").get<std::string>(
+            "zip"));
+
   std::cerr << module_cmd << std::endl;
   return 1;
 }
@@ -152,6 +157,11 @@ int parse_cli(int argc, char *argv[], arguments &args) {
   module_action.add_description("run <id>/action.sh");
   module_action.add_argument("id").help("module id");
   module_cmd.add_subparser(module_action);
+
+  argparse::ArgumentParser module_install("install");
+  module_install.add_description("install module from a zip package");
+  module_install.add_argument("zip").help("path to the module .zip");
+  module_cmd.add_subparser(module_install);
 
   program.add_subparser(module_cmd);
 

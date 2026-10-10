@@ -1,8 +1,10 @@
 #include "module_internal.hpp"
+#include "zip.hpp"
 
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
@@ -68,6 +70,27 @@ std::string get_env(const std::vector<std::string> &env,
       return entry.substr(prefix.size());
   }
   return std::string();
+}
+
+// Parse a java-properties style file (module.prop / system.prop / persist.config
+// all use the same `key=value` shape as the Rust `java_properties` crate that
+// ksud parses these with).
+void parse_properties(const std::string &content, Properties &out) {
+  out.clear();
+  std::istringstream stream(content);
+  std::string line;
+  while (std::getline(stream, line)) {
+    const std::string trimmed = utils::trim(line);
+    if (trimmed.empty() || trimmed[0] == '#')
+      continue;
+    const size_t eq = trimmed.find('=');
+    if (eq == std::string::npos)
+      continue;
+    const std::string key = utils::trim(trimmed.substr(0, eq));
+    const std::string value = utils::trim(trimmed.substr(eq + 1));
+    if (!key.empty())
+      out.emplace_back(key, value);
+  }
 }
 
 // Environment exported to every module script, mirroring
@@ -262,21 +285,7 @@ bool read_module_prop(const std::string &module_path, Properties &out) {
   if (!utils::read_file(utils::join(module_path, defs::MODULE_PROP), content))
     return false;
 
-  out.clear();
-  std::istringstream stream(content);
-  std::string line;
-  while (std::getline(stream, line)) {
-    const std::string trimmed = utils::trim(line);
-    if (trimmed.empty() || trimmed[0] == '#')
-      continue;
-    const size_t eq = trimmed.find('=');
-    if (eq == std::string::npos)
-      continue;
-    const std::string key = utils::trim(trimmed.substr(0, eq));
-    const std::string value = utils::trim(trimmed.substr(eq + 1));
-    if (!key.empty())
-      out.emplace_back(key, value);
-  }
+  parse_properties(content, out);
   return true;
 }
 
@@ -440,14 +449,15 @@ std::string get_metamodule_path() {
         target = utils::join(utils::dir_name(link), target);
       if (utils::is_dir(target))
         return target;
+      std::cerr << "[module] metamodule symlink points to a missing path: "
+                << target << std::endl;
     }
   }
 
-  // Fallback: scan the module directory for metamodule=1.
+  // Fallback: scan the module directory for metamodule=1. Keep the last match,
+  // as ksud does, so a later module wins a metamodule id collision.
   std::string found;
   foreach_module(ModuleType::All, [&found](const std::string &module) {
-    if (!found.empty())
-      return;
     Properties props;
     if (read_module_prop(module, props) && is_metamodule(props))
       found = module;
@@ -488,6 +498,85 @@ void metamodule_remove_symlink() {
   const std::string link = utils::strip_trailing_slash(defs::metamodule_dir());
   if (utils::is_symlink(link))
     ::unlink(link.c_str());
+}
+
+void metamodule_exec_metauninstall_script(const std::string &module_id) {
+  const std::string path = get_metamodule_path();
+  if (path.empty() || utils::exists(utils::join(path, defs::DISABLE_FILE_NAME)))
+    return;
+
+  const std::string script =
+      utils::join(path, defs::METAMODULE_METAUNINSTALL_SCRIPT);
+  if (!utils::is_file(script))
+    return;
+
+  std::cout << "[module] metamodule metauninstall for " << module_id
+            << std::endl;
+  exec_script(script, ScriptWait::Forever, std::chrono::steady_clock::now(),
+              {{"MODULE_ID", module_id}});
+}
+
+namespace {
+
+// A metamodule only overrides the install flow when it ships a metainstall.sh,
+// looking at both the active module and its staged update.
+bool metamodule_has_metainstall() {
+  const std::string path = get_metamodule_path();
+  if (path.empty())
+    return false;
+  if (utils::is_file(utils::join(path, defs::METAMODULE_METAINSTALL_SCRIPT)))
+    return true;
+
+  const std::string id = utils::base_name(path);
+  return utils::is_file(
+      utils::join(utils::join(defs::module_update_dir(), id),
+                  defs::METAMODULE_METAINSTALL_SCRIPT));
+}
+
+} // namespace
+
+bool metamodule_check_install_safety(bool *disabled) {
+  if (disabled != nullptr)
+    *disabled = false;
+
+  const std::string path = get_metamodule_path();
+  if (path.empty())
+    return true;
+
+  // No metainstall.sh means the default installer is used: always safe.
+  if (!metamodule_has_metainstall())
+    return true;
+
+  const bool has_update = utils::exists(utils::join(path, defs::UPDATE_FILE_NAME));
+  const bool has_remove = utils::exists(utils::join(path, defs::REMOVE_FILE_NAME));
+  const bool has_disable =
+      utils::exists(utils::join(path, defs::DISABLE_FILE_NAME));
+
+  if (!has_update && !has_remove && !has_disable)
+    return true;
+
+  if (disabled != nullptr)
+    *disabled = has_disable && !has_update && !has_remove;
+  return false;
+}
+
+bool metamodule_ensure_symlink(const std::string &module_path) {
+  const std::string link = utils::strip_trailing_slash(defs::metamodule_dir());
+
+  if (utils::is_symlink(link) || utils::is_file(link)) {
+    ::unlink(link.c_str());
+  } else if (utils::is_dir(link)) {
+    utils::remove_dir_all(link);
+  }
+
+  if (::symlink(module_path.c_str(), link.c_str()) != 0) {
+    std::cerr << "[module] failed to create metamodule symlink " << link << " -> "
+              << module_path << ": " << std::strerror(errno) << std::endl;
+    return false;
+  }
+  std::cout << "[module] metamodule symlink " << link << " -> " << module_path
+            << std::endl;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +693,18 @@ void prune_modules() {
       return;
 
     std::cout << "[module] remove module: " << module << std::endl;
+
+    const std::string id = utils::base_name(module);
+    Properties props;
+    const bool is_meta = read_module_prop(module, props) && is_metamodule(props);
+
+    if (is_meta) {
+      // Removing the metamodule itself: drop its symlink first.
+      metamodule_remove_symlink();
+    } else {
+      // Let an active metamodule react to the removal of a regular module.
+      metamodule_exec_metauninstall_script(id);
+    }
 
     // Run the module's own uninstaller before deleting the directory.
     const std::string uninstaller = utils::join(module, "uninstall.sh");
@@ -1016,6 +1117,427 @@ int install() {
   ::setxattr(target.c_str(), "security.selinux", con, sizeof(con) - 1, 0);
 
   std::cout << "[module] installed " << target << std::endl;
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Module installation
+//
+// Ported from ksud's `install_module` (userspace/ksud/src/module.rs) and the
+// parts of userspace/ksud/src/installer.sh that a module's customize.sh relies
+// on. Unlike ksud, extraction is done natively with ZipArchive instead of
+// shelling out to `unzip`, so ncore does not need a bundled busybox.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr const char *SYSTEM_CON = "u:object_r:system_file:s0";
+
+// Helper functions and the default install_module(). This is the subset of
+// installer.sh that modules depend on; the archive has already been extracted
+// into $MODPATH by the time this runs.
+constexpr const char *kInstallerPrelude = R"NCORE(
+ui_print() { echo "$1"; }
+
+abort() {
+  ui_print "! $1"
+  [ -n "$MODPATH" ] && rm -rf "$MODPATH" 2>/dev/null
+  rm -rf "$TMPDIR" 2>/dev/null
+  exit 1
+}
+
+toupper() { echo "$@" | tr '[:lower:]' '[:upper:]'; }
+
+print_title() {
+  local line1len line2len len bar
+  line1len=$(echo -n "$1" | wc -c)
+  line2len=$(echo -n "$2" | wc -c)
+  len=$line2len
+  [ "$line1len" -gt "$line2len" ] && len=$line1len
+  len=$((len + 2))
+  bar=$(printf "%${len}s" | tr ' ' '*')
+  ui_print "$bar"
+  ui_print " $1 "
+  [ -n "$2" ] && ui_print " $2 "
+  ui_print "$bar"
+}
+
+is_mounted() {
+  grep -q " $(readlink -f "$1") " /proc/mounts 2>/dev/null
+  return $?
+}
+
+check_sepolicy() { return 0; }
+
+set_perm() {
+  chown "$2:$3" "$1" || return 1
+  chmod "$4" "$1" || return 1
+  local CON="$5"
+  [ -z "$CON" ] && CON=u:object_r:system_file:s0
+  chcon "$CON" "$1" || return 1
+}
+
+set_perm_recursive() {
+  find "$1" -type d 2>/dev/null | while read -r dir; do
+    set_perm "$dir" "$2" "$3" "$4" "$6"
+  done
+  find "$1" \( -type f -o -type l \) 2>/dev/null | while read -r file; do
+    set_perm "$file" "$2" "$3" "$5" "$6"
+  done
+}
+
+mktouch() {
+  mkdir -p "${1%/*}" 2>/dev/null
+  [ -z "$2" ] && touch "$1" || echo "$2" > "$1"
+  chmod 644 "$1"
+}
+
+mark_remove() {
+  mkdir -p "${1%/*}" 2>/dev/null
+  mknod "$1" c 0 0
+  chmod 644 "$1"
+}
+
+mark_replace() {
+  rm -rf "$1" 2>/dev/null
+  mkdir -p "$1" 2>/dev/null
+  mknod "$1/.replace" c 0 0
+  chmod 644 "$1/.replace"
+}
+
+api_level_arch_detect() {
+  API=$(getprop ro.build.version.sdk)
+  ABI=$(getprop ro.product.cpu.abi)
+  case "$ABI" in
+    x86) ARCH=x86; ABI32=x86; IS64BIT=false ;;
+    arm64-v8a) ARCH=arm64; ABI32=armeabi-v7a; IS64BIT=true ;;
+    x86_64) ARCH=x64; ABI32=x86; IS64BIT=true ;;
+    riscv64) ARCH=riscv64; ABI32=; IS64BIT=true ;;
+    *) ARCH=arm; ABI=armeabi-v7a; ABI32=armeabi-v7a; IS64BIT=false ;;
+  esac
+}
+
+handle_partition() {
+  if [ ! -e "$MODPATH/system/$1" ]; then
+    return 0
+  fi
+  if [ -d "/$1" ] && [ ! -L "/$1" ]; then
+    ui_print "- Handle partition /$1"
+    mv -f "$MODPATH/system/$1" "$MODPATH/$1" && ln -sf "../$1" "$MODPATH/system/$1"
+  fi
+}
+
+install_module() {
+  if [ -f "$MODPATH/install.sh" ] && [ ! -f "$MODPATH/customize.sh" ]; then
+    . "$MODPATH/install.sh"
+    command -v print_modname >/dev/null 2>&1 && print_modname
+    command -v on_install >/dev/null 2>&1 && on_install
+  elif [ -f "$MODPATH/customize.sh" ]; then
+    . "$MODPATH/customize.sh"
+  fi
+
+  for TARGET in $REPLACE; do
+    ui_print "- Replace target: $TARGET"
+    mark_replace "$MODPATH$TARGET"
+  done
+  for TARGET in $REMOVE; do
+    ui_print "- Remove target: $TARGET"
+    mark_remove "$MODPATH$TARGET"
+  done
+
+  handle_partition vendor
+  handle_partition system_ext
+  handle_partition product
+  handle_partition odm
+}
+)NCORE";
+
+bool boot_completed() {
+  const char *forced = ::getenv("NCORE_ASSUME_BOOT_COMPLETED");
+  if (forced != nullptr && *forced != '\0' && std::strcmp(forced, "0") != 0)
+    return true;
+  return utils::getprop("sys.boot_completed") == "1";
+}
+
+std::string format_size(uint64_t bytes) {
+  char buffer[32];
+  std::snprintf(buffer, sizeof(buffer), "%.1f MiB",
+                static_cast<double>(bytes) / (1024.0 * 1024.0));
+  return buffer;
+}
+
+std::string shell_quote(const std::string &value) {
+  std::string out = "'";
+  for (char c : value) {
+    if (c == '\'')
+      out += "'\\''";
+    else
+      out.push_back(c);
+  }
+  out.push_back('\'');
+  return out;
+}
+
+void set_selinux_context(const std::string &path, const std::string &context) {
+  // Best effort: ncore runs in an unconfined domain, so a failure is cosmetic.
+  ::lsetxattr(path.c_str(), "security.selinux", context.c_str(), context.size(),
+              0);
+}
+
+void restore_syscon(const std::string &path) {
+  if (!utils::exists(path))
+    return;
+  set_selinux_context(path, SYSTEM_CON);
+  if (utils::is_dir(path) && !utils::is_symlink(path)) {
+    for (const auto &name : utils::list_dir(path))
+      restore_syscon(utils::join(path, name));
+  }
+}
+
+bool remove_entry(const std::string &path) {
+  if (utils::is_dir(path) && !utils::is_symlink(path))
+    return utils::remove_dir_all(path);
+  if (::unlink(path.c_str()) == 0)
+    return true;
+  return errno == ENOENT;
+}
+
+bool write_script(const std::string &path, const std::string &content) {
+  return utils::write_file(path, content) && ::chmod(path.c_str(), 0755) == 0;
+}
+
+bool copy_file(const std::string &from, const std::string &to) {
+  std::string data;
+  return utils::read_file(from, data) && utils::write_file(to, data);
+}
+
+// The legacy ARCH/ABI values installer.sh derives at runtime.
+struct ArchInfo {
+  std::string arch;
+  std::string abi;
+  std::string abi32;
+  bool is64 = false;
+};
+
+ArchInfo detect_arch() {
+  const std::string abi = utils::getprop("ro.product.cpu.abi");
+  if (abi == "x86")
+    return {"x86", "x86", "x86", false};
+  if (abi == "arm64-v8a")
+    return {"arm64", abi, "armeabi-v7a", true};
+  if (abi == "x86_64")
+    return {"x64", abi, "x86", true};
+  if (abi == "riscv64")
+    return {"riscv64", abi, "", true};
+  return {"arm", "armeabi-v7a", "armeabi-v7a", false};
+}
+
+std::string build_installer_script(const std::string &module_path,
+                                   const std::string &zip_real,
+                                   const std::string &tmp_dir,
+                                   const std::string &id,
+                                   const Properties &props,
+                                   const std::string &metainstall) {
+  const ArchInfo arch = detect_arch();
+  const std::string nvbase = utils::strip_trailing_slash(defs::adb_dir());
+
+  std::ostringstream out;
+  out << "umask 022\n";
+  out << "BOOTMODE=true\n";
+  out << "NVBASE=" << shell_quote(nvbase) << "\n";
+  out << "MODDIRNAME=modules_update\n";
+  out << "MODULEROOT=" << shell_quote(utils::join(nvbase, "modules_update"))
+      << "\n";
+  out << "MODPATH=" << shell_quote(module_path) << "\n";
+  out << "TMPDIR=" << shell_quote(tmp_dir) << "\n";
+  out << "ZIPFILE=" << shell_quote(zip_real) << "\n";
+  out << "MODID=" << shell_quote(id) << "\n";
+  out << "MODNAME=" << shell_quote(prop_get(props, "name")) << "\n";
+  out << "MODAUTH=" << shell_quote(prop_get(props, "author")) << "\n";
+  out << "MAGISK_VER=25.2\n";
+  out << "MAGISK_VER_CODE=25200\n";
+  out << "API=" << shell_quote(utils::getprop("ro.build.version.sdk")) << "\n";
+  out << "ABI=" << shell_quote(arch.abi) << "\n";
+  out << "ABI32=" << shell_quote(arch.abi32) << "\n";
+  out << "ARCH=" << shell_quote(arch.arch) << "\n";
+  out << "IS64BIT=" << (arch.is64 ? "true" : "false") << "\n";
+  out << "export BOOTMODE NVBASE MODDIRNAME MODULEROOT MODPATH TMPDIR ZIPFILE\n";
+  out << "export MODID MODNAME MODAUTH MAGISK_VER MAGISK_VER_CODE\n";
+  out << "export API ABI ABI32 ARCH IS64BIT\n";
+  out << kInstallerPrelude;
+  if (!metainstall.empty())
+    out << "\n" << metainstall << "\n";
+  out << "\ninstall_module\n";
+  return out.str();
+}
+
+} // namespace
+
+int install_module(const std::string &zip) {
+  if (!boot_completed()) {
+    std::cerr << "[module] Android is still booting, refusing to install"
+              << std::endl;
+    return 1;
+  }
+
+  const std::string zip_real = utils::realpath_str(zip);
+  if (zip_real.empty() || !utils::is_file(zip_real)) {
+    std::cerr << "[module] package not found: " << zip << std::endl;
+    return 1;
+  }
+
+  ZipArchive archive;
+  std::string error;
+  if (!archive.open(zip_real, &error)) {
+    std::cerr << "[module] invalid module package: " << error << std::endl;
+    return 1;
+  }
+
+  std::string prop_content;
+  if (!archive.read("module.prop", prop_content, &error)) {
+    std::cerr << "[module] " << error << std::endl;
+    return 1;
+  }
+
+  Properties props;
+  parse_properties(prop_content, props);
+
+  const std::string id = utils::trim(prop_get(props, "id"));
+  if (!validate_module_id(id)) {
+    std::cerr << "[module] invalid module id in module.prop: '" << id << "'"
+              << std::endl;
+    return 1;
+  }
+
+  const bool is_meta = is_metamodule(props);
+
+  if (!is_meta) {
+    bool disabled = false;
+    if (!metamodule_check_install_safety(&disabled)) {
+      std::cout << "\n- Installation blocked: a metamodule with a custom "
+                   "installer is active"
+                << std::endl;
+      std::cout << (disabled
+                        ? "- Current state: disabled; re-enable or uninstall it "
+                          "and reboot"
+                        : "- Current state: pending changes; reboot first")
+                << std::endl;
+      return 1;
+    }
+  } else {
+    const std::string existing = get_metamodule_id();
+    if (!existing.empty() && existing != id) {
+      std::cerr << "[module] cannot install metamodule " << id
+                << ": metamodule " << existing << " is already installed"
+                << std::endl;
+      return 1;
+    }
+  }
+
+  const std::string updated_dir = utils::join(defs::module_update_dir(), id);
+
+  std::cout << "- Module size: " << format_size(archive.uncompressed_size())
+            << std::endl;
+  std::cout << "- Installing to " << updated_dir << std::endl;
+
+  if (!utils::ensure_dir_exists(defs::module_update_dir())) {
+    std::cerr << "[module] failed to create " << defs::module_update_dir()
+              << std::endl;
+    return 1;
+  }
+  set_selinux_context(utils::strip_trailing_slash(defs::module_update_dir()),
+                      SYSTEM_CON);
+
+  if (!utils::ensure_clean_dir(updated_dir)) {
+    std::cerr << "[module] failed to prepare " << updated_dir << std::endl;
+    return 1;
+  }
+
+  std::cout << "- Extracting module files" << std::endl;
+  if (!archive.extract_all(updated_dir, &error)) {
+    std::cerr << "[module] extraction failed: " << error << std::endl;
+    utils::remove_dir_all(updated_dir);
+    return 1;
+  }
+
+  const std::string module_system = utils::join(updated_dir, "system");
+  if (utils::is_dir(module_system)) {
+    ::chmod(module_system.c_str(), 0755);
+    restore_syscon(module_system);
+  }
+
+  // A metamodule may override the default installer with metainstall.sh. A
+  // disabled metamodule is ignored, matching ksud.
+  std::string metainstall;
+  if (!is_meta) {
+    const std::string meta_path = get_metamodule_path();
+    if (!meta_path.empty() &&
+        !utils::exists(utils::join(meta_path, defs::DISABLE_FILE_NAME))) {
+      utils::read_file(utils::join(meta_path, defs::METAMODULE_METAINSTALL_SCRIPT),
+                       metainstall);
+    }
+  }
+
+  const std::string tmp_dir =
+      utils::join(utils::strip_trailing_slash(defs::working_dir()), "tmp");
+  utils::ensure_clean_dir(tmp_dir);
+  const std::string script_path = utils::join(tmp_dir, "installer.sh");
+  if (!write_script(script_path,
+                    build_installer_script(updated_dir, zip_real, tmp_dir, id,
+                                           props, metainstall))) {
+    std::cerr << "[module] failed to write installer script" << std::endl;
+    utils::remove_dir_all(updated_dir);
+    return 1;
+  }
+
+  std::cout << "- Running module installer" << std::endl;
+  int exit_code = 0;
+  exec_script(script_path, ScriptWait::Forever, std::chrono::steady_clock::now(),
+              {{"KSU_MODULE", id}, {"BOOTMODE", "true"}}, &exit_code);
+  utils::remove_dir_all(tmp_dir);
+
+  if (exit_code != 0) {
+    std::cerr << "[module] installer failed with status " << exit_code
+              << std::endl;
+    utils::remove_dir_all(updated_dir);
+    return 1;
+  }
+
+  // Cleanup that installer.sh performs after a successful install.
+  remove_entry(utils::join(updated_dir, "customize.sh"));
+  remove_entry(utils::join(updated_dir, "system/placeholder"));
+  remove_entry(utils::join(updated_dir, "README.md"));
+  for (const auto &name : utils::list_dir(updated_dir)) {
+    if (name.compare(0, 4, ".git") == 0)
+      remove_entry(utils::join(updated_dir, name));
+  }
+
+  // Stage the module for activation: write module.prop and the update flag into
+  // modules/<id>, and drop any stale disable/remove marks.
+  const std::string module = utils::join(defs::module_dir(), id);
+  if (!utils::ensure_dir_exists(module)) {
+    std::cerr << "[module] failed to create " << module << std::endl;
+    utils::remove_dir_all(updated_dir);
+    return 1;
+  }
+  if (!copy_file(utils::join(updated_dir, defs::MODULE_PROP),
+                 utils::join(module, defs::MODULE_PROP))) {
+    std::cerr << "[module] failed to stage module.prop" << std::endl;
+    return 1;
+  }
+  utils::ensure_file_exists(utils::join(module, defs::UPDATE_FILE_NAME));
+  remove_entry(utils::join(module, defs::REMOVE_FILE_NAME));
+  remove_entry(utils::join(module, defs::DISABLE_FILE_NAME));
+  set_selinux_context(module, SYSTEM_CON);
+  set_selinux_context(utils::join(module, defs::MODULE_PROP), SYSTEM_CON);
+
+  if (is_meta && !metamodule_ensure_symlink(module))
+    std::cerr << "[module] metamodule symlink could not be created" << std::endl;
+
+  if (!regenerate_preinit_rc())
+    std::cerr << "[module] regenerate preinit rc failed" << std::endl;
+
+  std::cout << "- Module installed successfully!" << std::endl;
   return 0;
 }
 

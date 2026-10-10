@@ -43,6 +43,11 @@ int uninstall_module(const std::string &id);
 // Clear the removal mark of module <id>.
 int undo_uninstall_module(const std::string &id);
 
+// Install a module package (a Magisk/KernelSU-format .zip) into
+// modules_update/<id> and mark it for activation on the next post-fs-data.
+// Mirrors ksud's `module install`. Returns 0 on success.
+int install_module(const std::string &zip);
+
 // Execute <id>/action.sh.
 int run_action(const std::string &id);
 

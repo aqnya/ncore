@@ -26,6 +26,7 @@ constexpr const char *UPDATE_FILE_NAME = "update";
 constexpr const char *REMOVE_FILE_NAME = "remove";
 
 constexpr const char *METAMODULE_MOUNT_SCRIPT = "metamount.sh";
+constexpr const char *METAMODULE_METAINSTALL_SCRIPT = "metainstall.sh";
 constexpr const char *METAMODULE_METAUNINSTALL_SCRIPT = "metauninstall.sh";
 
 constexpr const char *MODULES_RC_FILE = "modules.rc";
@@ -149,6 +150,19 @@ void metamodule_exec_stage_script(const std::string &stage, ScriptWait wait,
                                   const Deadline &deadline);
 void metamodule_exec_mount_script();
 void metamodule_remove_symlink();
+
+// Notify an active metamodule that module <module_id> is being uninstalled by
+// running its metauninstall.sh (with MODULE_ID set). No-op when there is no
+// metamodule, it is disabled, or it ships no script.
+void metamodule_exec_metauninstall_script(const std::string &module_id);
+
+// Whether installing a regular module is safe. Returns true when safe; on
+// false, *disabled reports whether the blocking metamodule is merely disabled
+// (mirrors ksud's check_install_safety).
+bool metamodule_check_install_safety(bool *disabled);
+
+// Point /data/adb/metamodule at <module_path>, replacing any existing entry.
+bool metamodule_ensure_symlink(const std::string &module_path);
 
 // Module lifecycle, mirroring ksud's module.rs.
 void handle_updated_modules();
