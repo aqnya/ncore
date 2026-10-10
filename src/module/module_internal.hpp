@@ -128,11 +128,14 @@ std::string prop_get(const Properties &props, const std::string &key);
 bool validate_module_id(const std::string &id);
 
 // Script execution. `extra_env` entries override the common environment and
-// are used by the metamodule scripts (MODULE_DIR / MODULE_ID).
+// are used by the metamodule scripts (MODULE_DIR / MODULE_ID). When
+// `exit_code` is non-null it receives the script's exit status (128 + signal
+// when killed, -1 when the script could not be run).
 void exec_script(const std::string &path, ScriptWait wait,
                  const Deadline &deadline,
                  const std::vector<std::pair<std::string, std::string>>
-                     &extra_env = {});
+                     &extra_env = {},
+                 int *exit_code = nullptr);
 void exec_stage_script(const std::string &stage, ScriptWait wait,
                        const Deadline &deadline);
 void exec_common_scripts(const std::string &dir, ScriptWait wait,
@@ -155,8 +158,8 @@ void load_system_prop();
 bool regenerate_preinit_rc();
 
 // Push every active module's sepolicy.rule to the kernel (parsed into the
-// KernelSU batch format and sent through the nksu control fd or
-// /proc/nksu/sepolicy). Missing rule files are skipped.
+// KernelSU batch format and sent through the nksu control fd). Missing rule
+// files are skipped.
 void load_sepolicy_rule();
 
 } // namespace modules

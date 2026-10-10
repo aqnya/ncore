@@ -120,11 +120,20 @@ ShellSpec resolve_shell(const std::string &script) {
   return {std::string(), {}};
 }
 
-bool wait_forever(pid_t pid) {
+bool wait_forever(pid_t pid, int *exit_code = nullptr) {
   int status = 0;
   while (::waitpid(pid, &status, 0) < 0) {
     if (errno != EINTR)
       return false;
+  }
+
+  if (exit_code != nullptr) {
+    if (WIFEXITED(status))
+      *exit_code = WEXITSTATUS(status);
+    else if (WIFSIGNALED(status))
+      *exit_code = 128 + WTERMSIG(status);
+    else
+      *exit_code = -1;
   }
   return true;
 }
@@ -306,7 +315,11 @@ void foreach_module(ModuleType type, const ModuleVisitor &visitor) {
 
 void exec_script(
     const std::string &path, ScriptWait wait, const Deadline &deadline,
-    const std::vector<std::pair<std::string, std::string>> &extra_env) {
+    const std::vector<std::pair<std::string, std::string>> &extra_env,
+    int *exit_code) {
+  if (exit_code != nullptr)
+    *exit_code = -1;
+
   if (!utils::is_file(path)) {
     std::cerr << "[module] script not found: " << path << std::endl;
     return;
@@ -358,9 +371,11 @@ void exec_script(
 
   switch (wait) {
   case ScriptWait::NoWait:
+    if (exit_code != nullptr)
+      *exit_code = 0; // not waited for, so no status is available
     break;
   case ScriptWait::Forever:
-    wait_forever(pid);
+    wait_forever(pid, exit_code);
     break;
   case ScriptWait::Until:
     if (deadline > std::chrono::steady_clock::now() &&
@@ -764,8 +779,12 @@ int run_action(const std::string &id) {
     return 1;
   }
 
-  exec_script(script, ScriptWait::Forever, std::chrono::steady_clock::now());
-  return 0;
+  // Propagate the script's exit status so callers can tell success from
+  // failure (e.g. the manager's action UI).
+  int exit_code = 0;
+  exec_script(script, ScriptWait::Forever, std::chrono::steady_clock::now(), {},
+              &exit_code);
+  return exit_code;
 }
 
 namespace {
@@ -833,6 +852,8 @@ int list_modules_json() {
           utils::exists(utils::join(path, defs::UPDATE_FILE_NAME));
       const bool skip_mount = utils::exists(utils::join(path, "skip_mount"));
       const bool has_system = utils::is_dir(utils::join(path, "system"));
+      const bool has_action =
+          utils::is_file(utils::join(path, defs::MODULE_ACTION_SH));
 
       std::string object = "{";
       auto add_str = [&object](const char *key, const std::string &value) {
@@ -862,6 +883,7 @@ int list_modules_json() {
       add_bool("remove", removed);
       add_bool("skipMount", skip_mount);
       add_bool("hasSystem", has_system);
+      add_bool("hasActionScript", has_action);
       object.back() = '}'; // drop the trailing comma
 
       if (!first)
@@ -902,6 +924,8 @@ int list_modules() {
         utils::exists(utils::join(path, defs::REMOVE_FILE_NAME));
     const bool update =
         utils::exists(utils::join(path, defs::UPDATE_FILE_NAME));
+    const bool has_action =
+        utils::is_file(utils::join(path, defs::MODULE_ACTION_SH));
 
     std::cout << id << ":\n"
               << "  name: " << prop_get(props, "name") << "\n"
@@ -910,7 +934,8 @@ int list_modules() {
               << "  description: " << prop_get(props, "description") << "\n"
               << "  enabled: " << (enabled ? "true" : "false") << "\n"
               << "  remove: " << (removed ? "true" : "false") << "\n"
-              << "  update: " << (update ? "true" : "false") << "\n";
+              << "  update: " << (update ? "true" : "false") << "\n"
+              << "  action: " << (has_action ? "true" : "false") << "\n";
   }
   return 0;
 }

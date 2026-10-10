@@ -4,9 +4,8 @@
 // binary sepolicy batch (same wire format as KernelSU's uapi/selinux.h) and
 // sends it through the nksu control fd via IOC_SET_SEPOLICY.
 //
-// The control fd is obtained with prctl(NKSU_PRCTL_GET_DRIVER_FD) (the kernel
-// installs an anon inode named [fmac_ctl] for root callers); if that is not
-// available the batch is written to /proc/nksu/sepolicy instead.
+// The control fd is obtained with prctl(NKSU_PRCTL_GET_DRIVER_FD): the kernel
+// installs an anon inode named [fmac_ctl] for root callers.
 
 #include "module_internal.hpp"
 
@@ -16,7 +15,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
-#include <fcntl.h>
 #include <iostream>
 #include <string>
 #include <sys/ioctl.h>
@@ -32,7 +30,6 @@ namespace {
 constexpr int kNksuPrctlGetDriverFd = 204;
 constexpr unsigned long kIocMagic = 'F';
 constexpr unsigned int kIocSetSepolicy = 12;
-constexpr const char *kSepolicySink = "/proc/nksu/sepolicy";
 
 struct fmac_ioc {
   uint32_t flag;
@@ -351,37 +348,27 @@ int driver_fd() {
 
 bool send_batch(const std::vector<uint8_t> &payload, int *applied) {
   const int fd = driver_fd();
-  if (fd >= 0) {
-    std::vector<uint8_t> buf(sizeof(struct fmac_ioc) + payload.size());
-    auto *ioc = reinterpret_cast<struct fmac_ioc *>(buf.data());
-    ioc->flag = kIocSetSepolicy;
-    ioc->size = static_cast<uint32_t>(payload.size());
-    if (!payload.empty())
-      std::memcpy(ioc->data, payload.data(), payload.size());
-    const int ret = ::ioctl(fd, NKSU_IOC_CMD, buf.data());
-    if (ret >= 0) {
-      *applied = ret;
-      return true;
-    }
+  if (fd < 0) {
+    std::cerr << "[module] cannot obtain the nksu control fd, sepolicy skipped"
+              << std::endl;
+    return false;
+  }
+
+  std::vector<uint8_t> buf(sizeof(struct fmac_ioc) + payload.size());
+  auto *ioc = reinterpret_cast<struct fmac_ioc *>(buf.data());
+  ioc->flag = kIocSetSepolicy;
+  ioc->size = static_cast<uint32_t>(payload.size());
+  if (!payload.empty())
+    std::memcpy(ioc->data, payload.data(), payload.size());
+
+  const int ret = ::ioctl(fd, NKSU_IOC_CMD, buf.data());
+  if (ret < 0) {
     std::cerr << "[module] IOC_SET_SEPOLICY failed: " << std::strerror(errno)
               << std::endl;
     return false;
   }
 
-  // Fallback: the write-only proc sink carries the same batch.
-  const int out = ::open(kSepolicySink, O_WRONLY | O_CLOEXEC);
-  if (out < 0)
-    return false;
-  ssize_t n = 0;
-  if (!payload.empty())
-    n = ::write(out, payload.data(), payload.size());
-  ::close(out);
-  if (n < 0) {
-    std::cerr << "[module] sepolicy sink write failed: " << std::strerror(errno)
-              << std::endl;
-    return false;
-  }
-  *applied = -1; // unknown count via the sink
+  *applied = ret;
   return true;
 }
 
