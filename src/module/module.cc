@@ -977,6 +977,7 @@ int list_modules_json() {
       add_str("name", prop_get(props, "name"));
       add_str("version", prop_get(props, "version"));
       add_str("versionCode", prop_get(props, "versionCode"));
+      add_str("updateJson", prop_get(props, "updateJson"));
       add_str("author", prop_get(props, "author"));
       add_str("description", prop_get(props, "description"));
       add_bool("enabled", enabled);
