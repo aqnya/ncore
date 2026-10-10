@@ -955,6 +955,7 @@ int list_modules_json() {
       const bool has_system = utils::is_dir(utils::join(path, "system"));
       const bool has_action =
           utils::is_file(utils::join(path, defs::MODULE_ACTION_SH));
+      const bool has_webui = utils::is_dir(utils::join(path, defs::MODULE_WEB_DIR));
 
       std::string object = "{";
       auto add_str = [&object](const char *key, const std::string &value) {
@@ -985,6 +986,7 @@ int list_modules_json() {
       add_bool("skipMount", skip_mount);
       add_bool("hasSystem", has_system);
       add_bool("hasActionScript", has_action);
+      add_bool("hasWebUi", has_webui);
       object.back() = '}'; // drop the trailing comma
 
       if (!first)
