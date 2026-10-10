@@ -663,6 +663,7 @@ int on_post_fs_data() {
 
 int on_services() {
   std::cout << "[module] on_services triggered" << std::endl;
+  ensure_ksu_dir_alias();
   run_stage_internal("service", ScriptWait::NoWait,
                      std::chrono::steady_clock::now());
   return 0;
@@ -670,6 +671,7 @@ int on_services() {
 
 int on_boot_completed() {
   std::cout << "[module] on_boot_completed triggered" << std::endl;
+  ensure_ksu_dir_alias();
   run_stage_internal("boot-completed", ScriptWait::NoWait,
                      std::chrono::steady_clock::now());
   return 0;
