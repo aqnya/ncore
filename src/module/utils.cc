@@ -44,7 +44,7 @@ const std::string &adb_dir() {
 
 const std::string &working_dir() {
   static const std::string value =
-      with_trailing_slash(env_or("NCORE_WORKING_DIR", adb_dir() + "ksu/"));
+      with_trailing_slash(env_or("NCORE_WORKING_DIR", adb_dir() + "nksu/"));
   return value;
 }
 

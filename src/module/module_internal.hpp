@@ -39,7 +39,6 @@ constexpr const char *SYSTEM_SH_PATH = "/system/bin/sh";
 // runtime (busybox, logs, temp files) lives under /data/adb/nksu/ alongside the
 // boot binary, so ncore does not depend on a KernelSU installation.
 constexpr const char *DEFAULT_ADB_DIR = "/data/adb/";
-constexpr const char *DEFAULT_WORKING_DIR = "/data/adb/nksu/";
 constexpr const char *DEFAULT_PREINIT_DIR_WATCHDOG = "/metadata/watchdog/nksu/";
 constexpr const char *DEFAULT_PREINIT_DIR_DEFAULT = "/metadata/nksu/";
 
